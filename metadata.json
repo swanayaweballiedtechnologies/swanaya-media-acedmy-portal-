@@ -1,0 +1,6 @@
+{
+  "name": "Swanaya Media Academy Management System",
+  "description": "An advanced, comprehensive EdTech SaaS ERP and LMS for tracking student progress, grades, attendance, and career portfolios.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
