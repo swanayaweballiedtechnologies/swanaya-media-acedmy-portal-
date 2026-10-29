@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { 
   Users, BookOpen, Layers, UserCheck, Calendar, GraduationCap, DollarSign, 
-  Plus, Edit, Eye, Trash2, Search, Filter, Check, X, FileText, MoveUp, MapPin
+  Plus, Edit, Eye, Trash2, Search, Filter, Check, X, FileText, MoveUp, MapPin, Sparkles, AlertTriangle
 } from 'lucide-react';
 import { 
   SwanayaDatabase, Student, Course, Batch, User, Instructor, Semester, Subject, AdmissionApplication, Lead
@@ -14,7 +14,7 @@ import {
 import InstructorAllocation from './InstructorAllocation';
 
 interface AdminPortalProps {
-  activeRole: 'SUPER_ADMIN' | 'ADMIN' | 'ACADEMIC_ADMIN';
+  activeRole: 'SUPER_ADMIN' | 'ADMIN' | 'ACADEMIC_ADMIN' | 'MD' | 'REVIEWER';
   currentUser: User;
   onRefreshAllData: () => void;
 }
@@ -29,12 +29,38 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
   const [subjects, setSubjects] = useState<Subject[]>(() => SwanayaDatabase.get<Subject[]>("subjects"));
   const [applications, setApplications] = useState<AdmissionApplication[]>(() => SwanayaDatabase.get<AdmissionApplication[]>("applications"));
 
+  // Batch capacity verification states for student modal
+  const [studentModalOverrideConfirmed, setStudentModalOverrideConfirmed] = useState(false);
+  const [studentModalCapacityWarning, setStudentModalCapacityWarning] = useState<string | null>(null);
+
   // Navigation Sub-tab within Admin portal
-  const [activeSubTab, setActiveSubTab] = useState<string>(() => {
-    if (activeRole === 'SUPER_ADMIN') return 'overview';
-    if (activeRole === 'ADMIN') return 'students';
-    return 'curriculum';
-  });
+  const [activeSubTab, setActiveSubTab] = useState<string>('registrations');
+
+  const handleClearPreloadedContent = () => {
+    if (window.confirm("Are you sure you want to remove all preloaded content? This will allow you to add fresh subjects, trainers, courses, and registrations.")) {
+      SwanayaDatabase.clearAllPreloadedData();
+      setStudents([]);
+      setCourses([]);
+      setBatches([]);
+      setInstructors([]);
+      setSemesters([]);
+      setSubjects([]);
+      setApplications([]);
+      onRefreshAllData();
+    }
+  };
+
+  const handleRestoreDefaultContent = () => {
+    SwanayaDatabase.restoreDefaultData();
+    setStudents(SwanayaDatabase.get<Student[]>("students"));
+    setCourses(SwanayaDatabase.get<Course[]>("courses"));
+    setBatches(SwanayaDatabase.get<Batch[]>("batches"));
+    setInstructors(SwanayaDatabase.get<Instructor[]>("instructors"));
+    setSemesters(SwanayaDatabase.get<Semester[]>("semesters"));
+    setSubjects(SwanayaDatabase.get<Subject[]>("subjects"));
+    setApplications(SwanayaDatabase.get<AdmissionApplication[]>("applications"));
+    onRefreshAllData();
+  };
 
   // Search & Filter state for lists
   const [studentSearch, setStudentSearch] = useState('');
@@ -99,6 +125,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
 
   // Student Actions
   const handleOpenStudentModal = (student: Student | null) => {
+    setStudentModalOverrideConfirmed(false);
+    setStudentModalCapacityWarning(null);
     if (student) {
       setEditingStudent(student);
       setStudentForm({
@@ -135,6 +163,24 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
 
   const handleSaveStudent = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check target batch capacity
+    const targetBatch = batches.find(b => b.id === studentForm.batchId);
+    // If editing existing student and they remain in the same batch, exclude them from count
+    const enrolledCount = students.filter(s => 
+      s.batchId === studentForm.batchId && 
+      s.status !== 'INACTIVE' && 
+      (!editingStudent || s.id !== editingStudent.id)
+    ).length;
+    const maxCapacity = targetBatch?.maxCapacity ?? 30;
+
+    if (enrolledCount >= maxCapacity && !studentModalOverrideConfirmed) {
+      setStudentModalCapacityWarning(`⚠️ Target Batch Full: ${targetBatch?.name || 'Selected batch'} has reached its capacity limit of ${maxCapacity} students (${enrolledCount}/${maxCapacity} filled). Please check the override box to proceed.`);
+      return;
+    }
+
+    setStudentModalCapacityWarning(null);
+
     if (editingStudent) {
       // Edit
       const updated = students.map(s => s.id === editingStudent.id ? {
@@ -361,8 +407,88 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
   return (
     <div className="space-y-6">
       
+      {/* Top Admin Controls Bar: Data Purge & Management */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-900/80 border border-slate-800 p-4 rounded-lg gap-4 shadow-lg">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <h2 className="text-sm font-serif font-bold text-white uppercase tracking-wider">
+              ADMIN CONTROL CENTER & REGISTRATIONS
+            </h2>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Manage registrations, add custom subjects, trainers (instructors), courses, and clear preloaded demo content for fresh entries.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleClearPreloadedContent}
+            className="px-3.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-mono font-bold uppercase rounded cursor-pointer transition-all flex items-center gap-1.5 shadow-md"
+            title="Remove preloaded demo courses, subjects, trainers and students"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Clear Preloaded Content
+          </button>
+          
+          <button
+            onClick={handleRestoreDefaultContent}
+            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-mono font-bold uppercase rounded cursor-pointer transition-all flex items-center gap-1.5 shadow-md"
+            title="Reload default demo data"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            Restore Demo Data
+          </button>
+        </div>
+      </div>
+
       {/* Dynamic Navigation Sub-tabs */}
-      <div className="flex flex-wrap items-center gap-1 bg-slate-900/60 border border-slate-800 p-1 rounded-md max-w-fit">
+      <div className="flex flex-wrap items-center gap-1 bg-slate-900/60 border border-slate-800 p-1 rounded-md">
+        <button 
+          onClick={() => setActiveSubTab('registrations')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
+            activeSubTab === 'registrations' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Registrations
+        </button>
+
+        <button 
+          onClick={() => setActiveSubTab('students')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
+            activeSubTab === 'students' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Students CRM
+        </button>
+
+        <button 
+          onClick={() => setActiveSubTab('curriculum')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
+            activeSubTab === 'curriculum' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Subjects & Curriculum
+        </button>
+
+        <button 
+          onClick={() => setActiveSubTab('allocation')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
+            activeSubTab === 'allocation' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Trainers & Faculty
+        </button>
+
+        <button 
+          onClick={() => setActiveSubTab('courses')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
+            activeSubTab === 'courses' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Courses Directory
+        </button>
+
         {activeRole === 'SUPER_ADMIN' && (
           <button 
             onClick={() => setActiveSubTab('overview')}
@@ -373,54 +499,133 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
             System Health
           </button>
         )}
-        
-        {(activeRole === 'SUPER_ADMIN' || activeRole === 'ADMIN') && (
-          <>
-            <button 
-              onClick={() => setActiveSubTab('students')}
-              className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-                activeSubTab === 'students' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Students CRM
-            </button>
-            <button 
-              onClick={() => setActiveSubTab('courses')}
-              className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-                activeSubTab === 'courses' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Courses Directory
-            </button>
-            <button 
-              onClick={() => setActiveSubTab('admissions')}
-              className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-                activeSubTab === 'admissions' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Admissions
-            </button>
-          </>
-        )}
-
-        <button 
-          onClick={() => setActiveSubTab('curriculum')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeSubTab === 'curriculum' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Curriculum Builder
-        </button>
-
-        <button 
-          onClick={() => setActiveSubTab('allocation')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeSubTab === 'allocation' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Faculty Allocation
-        </button>
       </div>
+
+      {/* REGISTRATIONS SUB-TAB */}
+      {activeSubTab === 'registrations' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900/60 border border-slate-800 p-5 rounded-lg gap-4">
+            <div>
+              <span className="text-[9px] font-mono font-bold text-amber-500 tracking-widest uppercase block">STUDENT & TRAINEE REGISTRATIONS</span>
+              <h3 className="text-base font-serif font-bold text-white">Registrations & Admissions Management</h3>
+              <p className="text-[11px] text-slate-400">Manage student registrations, review incoming proposals, and register new scholars directly into the database.</p>
+            </div>
+
+            <button
+              onClick={() => handleOpenStudentModal(null)}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1.5 shadow-md shadow-amber-500/10"
+            >
+              <Plus className="w-4 h-4" />
+              New Registration
+            </button>
+          </div>
+
+          {/* Pending Applications / Registrations list */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-5 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+              <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-300">
+                Incoming Registrations & Applications ({applications.length})
+              </h4>
+            </div>
+            
+            {applications.length > 0 ? (
+              <div className="space-y-3">
+                {applications.map((app) => (
+                  <div key={app.id} className="p-4 bg-slate-950 border border-slate-800 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-200 text-sm">{app.name}</span>
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded font-mono ${
+                          app.status === 'ACCEPTED' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-amber-500/10 border border-amber-500/20 text-amber-400'
+                        }`}>
+                          {app.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 font-mono">{app.email} • {app.phone}</p>
+                      <p className="text-[11px] text-slate-500">Qualification: {app.qualification} | Preferred Batch: {app.preferredBatch}</p>
+                      {app.message && <p className="text-[11px] text-slate-400 italic">"{app.message}"</p>}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {app.status !== 'ACCEPTED' && (
+                        <button
+                          onClick={() => handleApproveApplication(app.id)}
+                          className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          Approve Registration
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setStudentForm({
+                            name: app.name,
+                            email: app.email,
+                            phone: app.phone,
+                            guardianName: 'Self / Guardian',
+                            guardianPhone: app.phone,
+                            academicBackground: app.qualification,
+                            courseId: app.courseId || courses[0]?.id || 'c-1',
+                            batchId: batches[0]?.id || 'b-1',
+                            semesterId: semesters[0]?.id || 's-1-1',
+                            skills: 'Fresh Trainee',
+                            outstandingBalance: 145000
+                          });
+                          setIsStudentModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-amber-400 text-xs font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        Enroll Student
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center bg-slate-950 border border-slate-850 rounded-lg space-y-2">
+                <p className="text-xs text-slate-400">No pending admission registrations in system.</p>
+                <p className="text-[11px] text-slate-500">Click "New Registration" to add fresh trainees or scholars to the database.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Enrolled Student Roster summary in Registrations */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-lg p-5 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+              <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-300">
+                Registered Student Scholars ({students.length})
+              </h4>
+            </div>
+
+            {students.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {students.map((st) => (
+                  <div key={st.id} className="p-4 bg-slate-950 border border-slate-800 rounded-lg flex items-start gap-3">
+                    <img 
+                      src={st.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${st.name}`}
+                      alt={st.name} 
+                      className="w-10 h-10 rounded-full bg-slate-900 border border-slate-800 shrink-0"
+                    />
+                    <div className="space-y-1 min-w-0">
+                      <p className="font-bold text-slate-200 text-xs truncate">{st.name}</p>
+                      <span className="text-[10px] font-mono font-bold text-amber-500 block">{st.studentId}</span>
+                      <p className="text-[10px] text-slate-400 truncate">{st.email}</p>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 inline-block font-mono">
+                        {st.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-6 text-center bg-slate-950 border border-slate-850 rounded-lg">
+                <p className="text-xs text-slate-500 italic">Database contains zero registered students. Use "New Registration" or "Clear Preloaded Content" to populate fresh items.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* OVERVIEW SECTION */}
       {activeSubTab === 'overview' && (
@@ -956,9 +1161,20 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
       {isStudentModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-950 border border-slate-800 rounded-lg max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-sm font-bold text-slate-200 border-b border-slate-850 pb-2 font-serif">
-              {editingStudent ? 'Edit Student Profile' : 'Register New Student Profile'}
+            <h3 className="text-sm font-bold text-slate-200 border-b border-slate-850 pb-2 font-serif flex items-center justify-between">
+              <span>{editingStudent ? 'Edit Student Profile' : 'Fast-Track Student Enrollment'}</span>
+              <span className="text-[10px] font-mono font-normal text-amber-500">Academic Registrar</span>
             </h3>
+
+            {studentModalCapacityWarning && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded text-xs space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-rose-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>Capacity Exceeded Notice</span>
+                </div>
+                <p className="text-[11px] text-slate-300">{studentModalCapacityWarning}</p>
+              </div>
+            )}
 
             <form onSubmit={handleSaveStudent} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -1045,15 +1261,38 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] text-slate-500 uppercase font-bold">Batch</label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-slate-500 uppercase font-bold">Batch</label>
+                    {(() => {
+                      const selBatch = batches.find(b => b.id === studentForm.batchId);
+                      const currentCount = students.filter(s => s.batchId === studentForm.batchId && s.status !== 'INACTIVE' && (!editingStudent || s.id !== editingStudent.id)).length;
+                      const maxCap = selBatch?.maxCapacity ?? 30;
+                      const isFull = currentCount >= maxCap;
+                      return (
+                        <span className={`text-[9px] font-mono ${isFull ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
+                          {currentCount}/{maxCap} {isFull ? 'FULL' : 'seats'}
+                        </span>
+                      );
+                    })()}
+                  </div>
                   <select
                     value={studentForm.batchId}
-                    onChange={(e) => setStudentForm({...studentForm, batchId: e.target.value})}
+                    onChange={(e) => {
+                      setStudentForm({...studentForm, batchId: e.target.value});
+                      setStudentModalCapacityWarning(null);
+                    }}
                     className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-2 text-xs text-slate-200"
                   >
-                    {batches.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
+                    {batches.map(b => {
+                      const count = students.filter(s => s.batchId === b.id && s.status !== 'INACTIVE' && (!editingStudent || s.id !== editingStudent.id)).length;
+                      const maxCap = b.maxCapacity ?? 30;
+                      const isFull = count >= maxCap;
+                      return (
+                        <option key={b.id} value={b.id}>
+                          {b.name} ({count}/{maxCap} {isFull ? '• FULL' : ''})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -1069,6 +1308,40 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
                   </select>
                 </div>
               </div>
+
+              {/* BATCH CAPACITY WARNING BOX */}
+              {(() => {
+                const selBatch = batches.find(b => b.id === studentForm.batchId);
+                const currentCount = students.filter(s => s.batchId === studentForm.batchId && s.status !== 'INACTIVE' && (!editingStudent || s.id !== editingStudent.id)).length;
+                const maxCap = selBatch?.maxCapacity ?? 30;
+                const isFull = currentCount >= maxCap;
+
+                if (!isFull) return null;
+
+                return (
+                  <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <p className="text-xs font-bold text-amber-400 uppercase tracking-wide">⚠️ Target Batch Full Warning</p>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-snug">
+                      <strong className="text-amber-200">{selBatch?.name}</strong> has reached its maximum capacity limit of <strong className="font-mono text-amber-400">{maxCap} students</strong> ({currentCount}/{maxCap} filled).
+                    </p>
+                    <div className="flex items-center gap-2 pt-1 border-t border-amber-500/20">
+                      <input 
+                        type="checkbox"
+                        id="studentModalOverrideCheck"
+                        checked={studentModalOverrideConfirmed}
+                        onChange={(e) => setStudentModalOverrideConfirmed(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-amber-500 cursor-pointer rounded"
+                      />
+                      <label htmlFor="studentModalOverrideCheck" className="text-[11px] text-amber-200 font-semibold cursor-pointer select-none">
+                        I understand this batch is full and wish to proceed with enrollment
+                      </label>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">

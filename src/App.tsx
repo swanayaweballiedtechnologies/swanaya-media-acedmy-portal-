@@ -21,13 +21,14 @@ import StudentPortal from './components/StudentPortal';
 import FinancePortal from './components/FinancePortal';
 import CounsellorPortal from './components/CounsellorPortal';
 import CareerPortal from './components/CareerPortal';
+import ParentPortal from './components/ParentPortal';
 import SettingsAuditPortal from './components/SettingsAuditPortal';
 import StudentAiAssistant from './components/StudentAiAssistant';
 
 import { 
   Home, Users, BookOpen, Layers, Calendar, ClipboardCheck, 
   FileText, Award, Briefcase, DollarSign, Settings, ShieldAlert,
-  Bell, LogOut, Menu, X, ArrowLeft, ArrowUpRight, Sparkles, GraduationCap, CheckCircle2 
+  Bell, LogOut, Menu, X, ArrowLeft, ArrowUpRight, Sparkles, GraduationCap, CheckCircle2, AlertTriangle 
 } from 'lucide-react';
 
 export default function App() {
@@ -38,7 +39,7 @@ export default function App() {
 
   // Application general views
   // 'landing' | 'login' | 'verify' | 'portfolio' | 'portal'
-  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'verify' | 'portfolio' | 'portal'>('landing');
+  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'verify' | 'portfolio' | 'portal'>('login');
   
   // Parameterized sub-view states
   const [selectedVerifyCertId, setSelectedVerifyCertId] = useState<string>('');
@@ -49,7 +50,7 @@ export default function App() {
   const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
   const [isSchedModalOpen, setIsSchedModalOpen] = useState(false);
 
-  // Fast Student Enrollment Form State
+  // Fast Student Enrollment Form State & Capacity Verification
   const [fastStudent, setFastStudent] = useState({
     name: '',
     email: '',
@@ -58,6 +59,12 @@ export default function App() {
     batchId: 'b-1'
   });
   const [enrollSuccess, setEnrollSuccess] = useState(false);
+  const [fastEnrollOverrideConfirmed, setFastEnrollOverrideConfirmed] = useState(false);
+  const [fastEnrollCapacityWarning, setFastEnrollCapacityWarning] = useState<string | null>(null);
+
+  // Reactive DB states for quick modals
+  const [batchesList, setBatchesList] = useState<Batch[]>(() => SwanayaDatabase.get<Batch[]>("batches"));
+  const [studentsList, setStudentsList] = useState<Student[]>(() => SwanayaDatabase.get<Student[]>("students"));
 
   // Fast Batch Scheduler Form State
   const [fastSchedule, setFastSchedule] = useState({
@@ -76,13 +83,9 @@ export default function App() {
   const [exportingReport, setExportingReport] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
 
-  // Users & Active User states
+  // Users & Active User states (Requires authentication on login first)
   const [users, setUsers] = useState<User[]>(() => SwanayaDatabase.get<User[]>("users"));
-  const [activeUser, setActiveUser] = useState<User>(() => {
-    const list = SwanayaDatabase.get<User[]>("users");
-    // Default to Super Admin for immediate examiner testing
-    return list.find(u => u.role === 'SUPER_ADMIN') || list[0];
-  });
+  const [activeUser, setActiveUser] = useState<User | null>(null);
 
   // Re-fetch reactive states to update widgets instantly across CRUDs
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -90,11 +93,29 @@ export default function App() {
     setRefreshTrigger(prev => prev + 1);
   };
 
+  useEffect(() => {
+    setBatchesList(SwanayaDatabase.get<Batch[]>("batches"));
+    setStudentsList(SwanayaDatabase.get<Student[]>("students"));
+  }, [refreshTrigger, isEnrollModalOpen]);
+
   // Submit Fast Student Enrollment
   const handleFastEnrollSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!fastStudent.name || !fastStudent.email) return;
 
+    // Check target batch capacity
+    const curBatches = SwanayaDatabase.get<Batch[]>("batches");
+    const curStudents = SwanayaDatabase.get<Student[]>("students");
+    const targetBatch = curBatches.find(b => b.id === fastStudent.batchId);
+    const enrolledCount = curStudents.filter(s => s.batchId === fastStudent.batchId && s.status !== 'INACTIVE').length;
+    const maxCapacity = targetBatch?.maxCapacity ?? 30;
+
+    if (enrolledCount >= maxCapacity && !fastEnrollOverrideConfirmed) {
+      setFastEnrollCapacityWarning(`⚠️ Target Batch Full: ${targetBatch?.name || 'Selected batch'} has reached its capacity limit of ${maxCapacity} students (${enrolledCount}/${maxCapacity} filled). Please check the confirmation box below to proceed.`);
+      return;
+    }
+
+    setFastEnrollCapacityWarning(null);
     setEnrollSuccess(true);
     setTimeout(() => {
       const listStudents = SwanayaDatabase.get<Student[]>("students");
@@ -143,7 +164,7 @@ export default function App() {
       SwanayaDatabase.set("students", [...listStudents, newStudent]);
       SwanayaDatabase.set("users", [...listUsers, newUser]);
 
-      SwanayaDatabase.log(activeUser.email, activeUser.name, "STUDENT_FAST_ENROLL", `Fast Enroll: ${fastStudent.name}`);
+      SwanayaDatabase.log(activeUser?.email || 'admin@swanayamedia.com', activeUser?.name || 'Administrator', "STUDENT_FAST_ENROLL", `Fast Enroll: ${fastStudent.name}`);
       
       setEnrollSuccess(false);
       setIsEnrollModalOpen(false);
@@ -174,7 +195,7 @@ export default function App() {
       };
 
       SwanayaDatabase.set("classes", [...listClasses, newClass]);
-      SwanayaDatabase.log(activeUser.email, activeUser.name, "BATCH_FAST_SCHEDULE", `Scheduled Hour/Class for subject: ${fastSchedule.subjectId}`);
+      SwanayaDatabase.log(activeUser?.email || 'admin@swanayamedia.com', activeUser?.name || 'Administrator', "BATCH_FAST_SCHEDULE", `Scheduled Hour/Class for subject: ${fastSchedule.subjectId}`);
       
       setScheduleSuccess(false);
       setIsSchedModalOpen(false);
@@ -190,7 +211,7 @@ export default function App() {
     setTimeout(() => {
       setExportingReport(false);
       setReportSuccess(true);
-      SwanayaDatabase.log(activeUser.email, activeUser.name, "REPORT_FAST_EXPORT", "Generated academic ledger summary PDF");
+      SwanayaDatabase.log(activeUser?.email || 'admin@swanayamedia.com', activeUser?.name || 'Administrator', "REPORT_FAST_EXPORT", "Generated academic ledger summary PDF");
       setTimeout(() => {
         setReportSuccess(false);
         setIsReportModalOpen(false);
@@ -211,13 +232,17 @@ export default function App() {
     setUsers(SwanayaDatabase.get<User[]>("users"));
     
     // Filter notifications for active user
-    const list = SwanayaDatabase.get<Notification[]>("notifications");
-    setNotifications(list.filter(n => n.userId === activeUser.id || activeUser.role === 'SUPER_ADMIN'));
+    if (activeUser) {
+      const list = SwanayaDatabase.get<Notification[]>("notifications");
+      setNotifications(list.filter(n => n.userId === activeUser.id || activeUser.role === 'SUPER_ADMIN'));
+    } else {
+      setNotifications([]);
+    }
   }, [activeUser, refreshTrigger]);
 
   // Find respective active student or instructor object matching active logged in user
-  const activeStudentProfile = students.find(s => s.userId === activeUser.id);
-  const activeInstructorProfile = instructors.find(i => i.userId === activeUser.id);
+  const activeStudentProfile = activeUser ? (students.find(s => s.userId === activeUser.id) || students[0]) : null;
+  const activeInstructorProfile = activeUser ? (instructors.find(i => i.userId === activeUser.id) || instructors[0]) : null;
 
   // CRM submissions triggers from landing form
   const handleApplyFromLanding = (leadData: { name: string; email: string; phone: string; courseId: string; qualification: string; preferredBatch: string; message: string }) => {
@@ -289,6 +314,8 @@ export default function App() {
       setActivePortalTab('cRM');
     } else if (user.role === 'CAREER') {
       setActivePortalTab('career');
+    } else if (user.role === 'PARENT') {
+      setActivePortalTab('parent');
     } else {
       setActivePortalTab('overview');
     }
@@ -296,6 +323,7 @@ export default function App() {
 
   // Notification clear action
   const handleMarkNotificationsRead = () => {
+    if (!activeUser) return;
     const list = SwanayaDatabase.get<Notification[]>("notifications");
     const updated = list.map(n => n.userId === activeUser.id || activeUser.role === 'SUPER_ADMIN' ? { ...n, read: true } : n);
     SwanayaDatabase.set("notifications", updated);
@@ -324,7 +352,7 @@ export default function App() {
     );
   }
 
-  if (currentView === 'login') {
+  if (currentView === 'login' || !activeUser) {
     return (
       <AuthGateway 
         onLoginSuccess={(user) => {
@@ -440,25 +468,32 @@ export default function App() {
           </div>
 
           {/* Active User Indicator */}
-          <div className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-4 font-mono text-xs text-slate-400">
-            <span>Logged in:</span>
-            <strong className="text-slate-200">{activeUser.name}</strong>
-          </div>
+          {activeUser && (
+            <div className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-4 font-mono text-xs text-slate-400">
+              <span>Logged in:</span>
+              <strong className="text-slate-200">{activeUser.name}</strong>
+            </div>
+          )}
 
         </div>
 
         {/* Zone 3: Interactive Role Switcher & Action buttons */}
         <div className="flex items-center gap-3 shrink-0">
-          <RoleSwitcher 
-            users={users}
-            activeUser={activeUser}
-            onSelectUser={handleSelectUser}
-          />
+          {activeUser && (
+            <RoleSwitcher 
+              users={users}
+              activeUser={activeUser}
+              onSelectUser={handleSelectUser}
+            />
+          )}
 
           <button 
-            onClick={() => setCurrentView('landing')}
+            onClick={() => {
+              setActiveUser(null);
+              setCurrentView('login');
+            }}
             className="p-1.5 bg-slate-900 border border-slate-800 rounded text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all cursor-pointer"
-            title="Logout and Exit"
+            title="Logout and Exit to Authentication Login"
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -498,8 +533,8 @@ export default function App() {
               Syllabus & ERP Modules
             </p>
 
-            {/* SUPER_ADMIN, ADMIN, ACADEMIC_ADMIN navigation elements */}
-            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN') && (
+            {/* SUPER_ADMIN, MD, ADMIN, ACADEMIC_ADMIN, REVIEWER navigation elements */}
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
               <>
                 <button 
                   onClick={() => { setActivePortalTab('overview'); setMobileMenuOpen(false); }}
@@ -534,7 +569,7 @@ export default function App() {
             )}
 
             {/* ACADEMIC INSTRUCTOR portal access */}
-            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'INSTRUCTOR') && (
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER') && (
               <>
                 <button 
                   onClick={() => { setActivePortalTab('attendance'); setMobileMenuOpen(false); }}
@@ -559,7 +594,7 @@ export default function App() {
             )}
 
             {/* ADMISSIONS COUNSELLOR CRM access */}
-            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'COUNSELLOR') && (
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'COUNSELLOR') && (
               <button 
                 onClick={() => { setActivePortalTab('cRM'); setMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
@@ -571,8 +606,8 @@ export default function App() {
               </button>
             )}
 
-            {/* STUDENT PORTAL navigation widgets */}
-            {activeUser.role === 'STUDENT' && activeStudentProfile && (
+            {/* STUDENT & ALUMNI PORTAL navigation widgets */}
+            {(activeUser.role === 'STUDENT' || activeUser.role === 'ALUMNI') && activeStudentProfile && (
               <button 
                 onClick={() => { setActivePortalTab('student'); setMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
@@ -580,12 +615,25 @@ export default function App() {
                 }`}
               >
                 <GraduationCap className="w-4 h-4 text-amber-500" />
-                My Study Classroom
+                {activeUser.role === 'ALUMNI' ? 'Alumni Graduate Classroom' : 'My Study Classroom'}
+              </button>
+            )}
+
+            {/* PARENT / GUARDIAN PORTAL navigation */}
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'PARENT' || activeUser.role === 'REVIEWER') && (
+              <button 
+                onClick={() => { setActivePortalTab('parent'); setMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                  activePortalTab === 'parent' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Users className="w-4 h-4 text-amber-500" />
+                Parent & Guardian Portal
               </button>
             )}
 
             {/* CAREER & PLACEMENTS HUB */}
-            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'CAREER') && (
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'CAREER' || activeUser.role === 'REVIEWER') && (
               <button 
                 onClick={() => { setActivePortalTab('career'); setMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
@@ -598,7 +646,7 @@ export default function App() {
             )}
 
             {/* FINANCE fees & invoicing registry */}
-            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'FINANCE') && (
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'FINANCE') && (
               <button 
                 onClick={() => { setActivePortalTab('finance'); setMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
@@ -611,7 +659,7 @@ export default function App() {
             )}
 
             {/* SYSTEM CONFIGURATION & AUDITS */}
-            {activeUser.role === 'SUPER_ADMIN' && (
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD') && (
               <button 
                 onClick={() => { setActivePortalTab('settings'); setMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
@@ -650,7 +698,7 @@ export default function App() {
 
 
             {/* ACTIVE PORTAL TAB SWITCHER */}
-            {activePortalTab === 'overview' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN') && (
+            {activePortalTab === 'overview' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
               <AdminPortal 
                 activeRole={activeUser.role as any}
                 currentUser={activeUser}
@@ -658,7 +706,7 @@ export default function App() {
               />
             )}
 
-            {activePortalTab === 'students' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'ADMIN') && (
+            {activePortalTab === 'students' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'REVIEWER') && (
               <AdminPortal 
                 activeRole={activeUser.role as any}
                 currentUser={activeUser}
@@ -666,7 +714,7 @@ export default function App() {
               />
             )}
 
-            {activePortalTab === 'courses' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'ADMIN') && (
+            {activePortalTab === 'courses' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'REVIEWER') && (
               <AdminPortal 
                 activeRole={activeUser.role as any}
                 currentUser={activeUser}
@@ -674,7 +722,7 @@ export default function App() {
               />
             )}
 
-            {activePortalTab === 'attendance' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'INSTRUCTOR') && activeInstructorProfile && (
+            {activePortalTab === 'attendance' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER') && activeInstructorProfile && (
               <InstructorPortal 
                 instructorUser={activeInstructorProfile}
                 currentUser={activeUser}
@@ -682,7 +730,7 @@ export default function App() {
               />
             )}
 
-            {activePortalTab === 'assignments' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'INSTRUCTOR') && activeInstructorProfile && (
+            {activePortalTab === 'assignments' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER') && activeInstructorProfile && (
               <InstructorPortal 
                 instructorUser={activeInstructorProfile}
                 currentUser={activeUser}
@@ -690,14 +738,14 @@ export default function App() {
               />
             )}
 
-            {activePortalTab === 'cRM' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'COUNSELLOR') && (
+            {activePortalTab === 'cRM' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'COUNSELLOR') && (
               <CounsellorPortal 
                 currentUser={activeUser}
                 onRefreshAllData={handleRefreshAllData}
               />
             )}
 
-            {activePortalTab === 'student' && activeUser.role === 'STUDENT' && activeStudentProfile && (
+            {activePortalTab === 'student' && (activeUser.role === 'STUDENT' || activeUser.role === 'ALUMNI') && activeStudentProfile && (
               <StudentPortal 
                 studentUser={activeStudentProfile}
                 currentUser={activeUser}
@@ -709,20 +757,15 @@ export default function App() {
               />
             )}
 
-            {/* Student fallback widget if custom tab was shifted but they are a Student */}
-            {activePortalTab === 'overview' && activeUser.role === 'STUDENT' && activeStudentProfile && (
-              <StudentPortal 
-                studentUser={activeStudentProfile}
-                currentUser={activeUser}
+            {/* PARENT / GUARDIAN PORTAL RENDER */}
+            {(activePortalTab === 'parent' || activeUser.role === 'PARENT') && (
+              <ParentPortal 
+                parentUser={activeUser}
                 onRefreshAllData={handleRefreshAllData}
-                onNavigateToVerify={(certId) => {
-                  setSelectedVerifyCertId(certId);
-                  setCurrentView('verify');
-                }}
               />
             )}
 
-            {activePortalTab === 'career' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'CAREER') && (
+            {activePortalTab === 'career' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'CAREER' || activeUser.role === 'REVIEWER') && (
               <CareerPortal 
                 onSelectPortfolio={(student) => {
                   setSelectedPortfolioStudent(student);
@@ -732,14 +775,14 @@ export default function App() {
               />
             )}
 
-            {activePortalTab === 'finance' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'FINANCE') && (
+            {activePortalTab === 'finance' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'FINANCE') && (
               <FinancePortal 
                 currentUser={activeUser}
                 onRefreshAllData={handleRefreshAllData}
               />
             )}
 
-            {activePortalTab === 'settings' && activeUser.role === 'SUPER_ADMIN' && (
+            {activePortalTab === 'settings' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD') && (
               <SettingsAuditPortal 
                 currentUser={activeUser}
                 onRefreshAllData={handleRefreshAllData}
@@ -855,6 +898,16 @@ export default function App() {
             </div>
 
             <form onSubmit={handleFastEnrollSubmit} className="space-y-4">
+              {fastEnrollCapacityWarning && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-rose-400">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>Capacity Exceeded Notice</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">{fastEnrollCapacityWarning}</p>
+                </div>
+              )}
+
               {enrollSuccess ? (
                 <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg text-center space-y-2 animate-pulse">
                   <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
@@ -915,23 +968,84 @@ export default function App() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[10px] text-slate-500 uppercase font-bold">Target Cohort Batch</label>
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] text-slate-500 uppercase font-bold">Target Cohort Batch</label>
+                        {(() => {
+                          const selBatch = batchesList.find(b => b.id === fastStudent.batchId);
+                          const count = studentsList.filter(s => s.batchId === fastStudent.batchId && s.status !== 'INACTIVE').length;
+                          const maxCap = selBatch?.maxCapacity ?? 30;
+                          const isFull = count >= maxCap;
+                          return (
+                            <span className={`text-[9px] font-mono ${isFull ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
+                              {count}/{maxCap} {isFull ? 'FULL' : 'filled'}
+                            </span>
+                          );
+                        })()}
+                      </div>
                       <select 
                         value={fastStudent.batchId}
-                        onChange={(e) => setFastStudent({ ...fastStudent, batchId: e.target.value })}
+                        onChange={(e) => {
+                          setFastStudent({ ...fastStudent, batchId: e.target.value });
+                          setFastEnrollCapacityWarning(null);
+                        }}
                         className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none"
                       >
-                        <option value="b-1">Web Dev Elite Batch A (2026)</option>
-                        <option value="b-2">Integrated Marketing Cohort B</option>
-                        <option value="b-3">AI Business Weekend</option>
+                        {batchesList.map(b => {
+                          const count = studentsList.filter(s => s.batchId === b.id && s.status !== 'INACTIVE').length;
+                          const maxCap = b.maxCapacity ?? 30;
+                          const isFull = count >= maxCap;
+                          return (
+                            <option key={b.id} value={b.id}>
+                              {b.name} ({count}/{maxCap} {isFull ? '• FULL' : ''})
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   </div>
 
+                  {/* BATCH CAPACITY WARNING BOX */}
+                  {(() => {
+                    const selBatch = batchesList.find(b => b.id === fastStudent.batchId);
+                    const count = studentsList.filter(s => s.batchId === fastStudent.batchId && s.status !== 'INACTIVE').length;
+                    const maxCap = selBatch?.maxCapacity ?? 30;
+                    const isFull = count >= maxCap;
+
+                    if (!isFull) return null;
+
+                    return (
+                      <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 space-y-2">
+                        <div className="flex items-center gap-2 font-bold text-amber-400 text-xs uppercase tracking-wide">
+                          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                          <span>⚠️ Target Batch Full Warning</span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-snug">
+                          <strong className="text-amber-200">{selBatch?.name}</strong> has reached its maximum capacity limit of <strong className="font-mono text-amber-400">{maxCap} students</strong> ({count}/{maxCap} filled).
+                        </p>
+                        <div className="flex items-center gap-2 pt-1 border-t border-amber-500/20">
+                          <input 
+                            type="checkbox"
+                            id="fastEnrollOverrideCheck"
+                            checked={fastEnrollOverrideConfirmed}
+                            onChange={(e) => setFastEnrollOverrideConfirmed(e.target.checked)}
+                            className="w-3.5 h-3.5 accent-amber-500 cursor-pointer rounded"
+                          />
+                          <label htmlFor="fastEnrollOverrideCheck" className="text-[11px] text-amber-200 font-semibold cursor-pointer select-none">
+                            I understand this batch is full and wish to proceed with enrollment
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="pt-2 border-t border-slate-850 flex justify-end gap-2.5">
                     <button
                       type="button"
-                      onClick={() => setIsEnrollModalOpen(false)}
+                      onClick={() => {
+                        setIsEnrollModalOpen(false);
+                        setFastEnrollCapacityWarning(null);
+                        setFastEnrollOverrideConfirmed(false);
+                      }}
                       className="px-4 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 rounded text-xs text-slate-400 font-bold uppercase"
                     >
                       Cancel

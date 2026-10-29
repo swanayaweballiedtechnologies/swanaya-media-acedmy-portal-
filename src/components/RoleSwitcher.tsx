@@ -18,28 +18,36 @@ export default function RoleSwitcher({ users, activeUser, onSelectUser }: RoleSw
 
   const getRoleBadgeColor = (role: UserRole) => {
     switch (role) {
+      case 'MD': return 'text-purple-300 border-purple-500/30 bg-purple-500/10';
       case 'SUPER_ADMIN': return 'text-rose-400 border-rose-500/20 bg-rose-500/5';
       case 'ADMIN': return 'text-amber-400 border-amber-500/20 bg-amber-500/5';
       case 'ACADEMIC_ADMIN': return 'text-sky-400 border-sky-500/20 bg-sky-500/5';
+      case 'REVIEWER': return 'text-cyan-400 border-cyan-500/20 bg-cyan-500/5';
+      case 'ALUMNI': return 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5';
       case 'INSTRUCTOR': return 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5';
       case 'STUDENT': return 'text-indigo-400 border-indigo-500/20 bg-indigo-500/5';
       case 'FINANCE': return 'text-teal-400 border-teal-500/20 bg-teal-500/5';
       case 'COUNSELLOR': return 'text-purple-400 border-purple-500/20 bg-purple-500/5';
       case 'CAREER': return 'text-pink-400 border-pink-500/20 bg-pink-500/5';
+      case 'PARENT': return 'text-amber-300 border-amber-500/30 bg-amber-500/10';
       default: return 'text-slate-400 border-slate-500/20 bg-slate-500/5';
     }
   };
 
   const getRoleExplanation = (role: UserRole) => {
     switch (role) {
+      case 'MD': return 'Managing Director — Executive oversight, strategic dashboards, full institute controls.';
       case 'SUPER_ADMIN': return 'System-wide configurations, audit log viewer, raw local database storage reset.';
       case 'ADMIN': return 'Manage students, configure batches, courses registry, handle admissions.';
       case 'ACADEMIC_ADMIN': return 'Curriculum builder (subjects/semesters), timetables scheduler, grades mapper.';
+      case 'REVIEWER': return 'Academic Reviewer — Read-only evaluation mode to inspect curriculum, student projects, and grades.';
+      case 'ALUMNI': return 'Alumni Network — View graduated course history, verified certificates, and career placement archives.';
       case 'INSTRUCTOR': return 'Mark class attendance, post homework/exams, review uploads, grade projects.';
       case 'STUDENT': return 'Track classes, interactive LMS reader, check syllabus progress, submit assignments.';
       case 'FINANCE': return 'Outstanding fees ledger, payments, invoices, receipt generation.';
       case 'COUNSELLOR': return 'Admissions CRM stage pipelines (Leads -> Enrolled, drag-&-drop simulated flow).';
       case 'CAREER': return 'Skills tracker, career readiness calculator, public student portfolio generator.';
+      case 'PARENT': return 'Parent/Guardian Portal — Track ward academic progress, exam results, attendance & fee statements with PIN security.';
     }
   };
 
@@ -99,7 +107,14 @@ export default function RoleSwitcher({ users, activeUser, onSelectUser }: RoleSw
                   />
                   <div className="flex-grow space-y-0.5">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold text-slate-200">{usr.name}</p>
+                      <p className="text-xs font-bold text-slate-200 flex items-center gap-1">
+                        {usr.name}
+                        {usr.isVerified && (
+                          <span className="inline-flex items-center text-emerald-400" title="Verified Account & Email ID">
+                            <Check className="w-3 h-3 border border-emerald-500/40 bg-emerald-500/20 rounded-full p-0.5" />
+                          </span>
+                        )}
+                      </p>
                       {usr.id === activeUser.id && (
                         <Check className="w-3 h-3 text-amber-400 shrink-0" />
                       )}

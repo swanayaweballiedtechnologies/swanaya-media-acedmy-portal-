@@ -6,22 +6,33 @@
 // Types & Database Schema
 export type UserRole =
   | 'SUPER_ADMIN'
+  | 'MD'
   | 'ADMIN'
   | 'ACADEMIC_ADMIN'
   | 'INSTRUCTOR'
   | 'STUDENT'
+  | 'ALUMNI'
+  | 'REVIEWER'
   | 'FINANCE'
   | 'COUNSELLOR'
-  | 'CAREER';
+  | 'CAREER'
+  | 'PARENT';
 
 export interface User {
   id: string;
+  username?: string;
   email: string;
   name: string;
   role: UserRole;
   avatarUrl?: string;
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: string;
+  isVerified?: boolean;
+  studentIds?: string[];
+  guardianPin?: string;
+  whatsappPhone?: string;
+  whatsappOptIn?: boolean;
+  preferredCourseId?: string;
 }
 
 export interface Student {
@@ -32,6 +43,8 @@ export interface Student {
   name: string;
   email: string;
   phone: string;
+  whatsappPhone?: string;
+  whatsappOptIn?: boolean;
   guardianName: string;
   guardianPhone: string;
   academicBackground: string;
@@ -122,6 +135,7 @@ export interface Batch {
   schedule: string; // e.g., "Mon, Wed, Fri (10 AM - 1 PM)"
   instructorId: string;
   status: 'UPCOMING' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
+  maxCapacity?: number;
 }
 
 export interface ClassSchedule {
@@ -514,7 +528,8 @@ export const INITIAL_BATCHES: Batch[] = [
     endDate: "2027-02-15",
     schedule: "Mon, Wed, Fri (10:00 AM - 01:00 PM)",
     instructorId: "inst-1",
-    status: "ACTIVE"
+    status: "ACTIVE",
+    maxCapacity: 2
   },
   {
     id: "b-2",
@@ -525,7 +540,8 @@ export const INITIAL_BATCHES: Batch[] = [
     endDate: "2026-10-10",
     schedule: "Tue, Thu, Sat (02:00 PM - 05:00 PM)",
     instructorId: "inst-2",
-    status: "ACTIVE"
+    status: "ACTIVE",
+    maxCapacity: 25
   },
   {
     id: "b-3",
@@ -536,22 +552,29 @@ export const INITIAL_BATCHES: Batch[] = [
     endDate: "2026-12-01",
     schedule: "Saturday & Sunday (09:00 AM - 12:00 PM)",
     instructorId: "inst-1",
-    status: "ACTIVE"
+    status: "ACTIVE",
+    maxCapacity: 20
   }
 ];
 
 export const INITIAL_USERS: User[] = [
-  { id: "usr-superadmin", email: "superadmin@swanayamedia.com", name: "Suresh Pillai (MD)", role: "SUPER_ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Suresh", status: "ACTIVE", createdAt: "2026-01-10" },
-  { id: "usr-admin", email: "admin@swanayamedia.com", name: "Ananya Nair (Principal)", role: "ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ananya", status: "ACTIVE", createdAt: "2026-01-11" },
-  { id: "usr-academic", email: "academic@swanayamedia.com", name: "Dr. K. Raghavan", role: "ACADEMIC_ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Raghavan", status: "ACTIVE", createdAt: "2026-01-15" },
-  { id: "usr-inst1", email: "instructor1@swanayamedia.com", name: "Ananthakrishnan S.", role: "INSTRUCTOR", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ananth", status: "ACTIVE", createdAt: "2026-01-20" },
-  { id: "usr-inst2", email: "instructor2@swanayamedia.com", name: "Devika Menon", role: "INSTRUCTOR", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Devika", status: "ACTIVE", createdAt: "2026-01-22" },
-  { id: "usr-stud1", email: "student1@swanayamedia.com", name: "Aravind K. Kumar", role: "STUDENT", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Aravind", status: "ACTIVE", createdAt: "2026-02-01" },
-  { id: "usr-stud2", email: "student2@swanayamedia.com", name: "Riya Maria Joseph", role: "STUDENT", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Riya", status: "ACTIVE", createdAt: "2026-02-05" },
-  { id: "usr-stud3", email: "student3@swanayamedia.com", name: "Gautham S. Kumar", role: "STUDENT", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Gautham", status: "ACTIVE", createdAt: "2026-02-10" },
-  { id: "usr-finance", email: "finance@swanayamedia.com", name: "Harisankar P.", role: "FINANCE", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Hari", status: "ACTIVE", createdAt: "2026-01-12" },
-  { id: "usr-counsel", email: "counsellor@swanayamedia.com", name: "Lakshmi S. Bose", role: "COUNSELLOR", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Lakshmi", status: "ACTIVE", createdAt: "2026-01-14" },
-  { id: "usr-career", email: "career@swanayamedia.com", name: "Vikram R. Chandran", role: "CAREER", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Vikram", status: "ACTIVE", createdAt: "2026-01-18" }
+  { id: "usr-md", username: "aadithyan", email: "aadithyan.menon@swanayamedia.com", name: "AADITHYAN M MENON (MD)", role: "MD", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Adithyan", status: "ACTIVE", createdAt: "2026-01-01", isVerified: true },
+  { id: "usr-navven", username: "navven", email: "navven.admin@swanayamedia.com", name: "NAVVEN (Administrator)", role: "ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Naveen", status: "ACTIVE", createdAt: "2026-01-02", isVerified: true },
+  { id: "usr-reviewer", username: "reviewer", email: "reviewer@swanayamedia.com", name: "Academic Reviewer", role: "REVIEWER", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Reviewer", status: "ACTIVE", createdAt: "2026-01-05", isVerified: true },
+  { id: "usr-alumni", username: "alumni", email: "alumni@swanayamedia.com", name: "Alumni Graduate (Nikhil V.)", role: "ALUMNI", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alumni", status: "ACTIVE", createdAt: "2026-01-08", isVerified: true },
+  { id: "usr-superadmin", username: "superadmin", email: "superadmin@swanayamedia.com", name: "Suresh Pillai", role: "SUPER_ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Suresh", status: "ACTIVE", createdAt: "2026-01-10", isVerified: true },
+  { id: "usr-admin", username: "admin", email: "admin@swanayamedia.com", name: "Ananya Nair (Principal)", role: "ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ananya", status: "ACTIVE", createdAt: "2026-01-11", isVerified: true },
+  { id: "usr-academic", username: "academic", email: "academic@swanayamedia.com", name: "Dr. K. Raghavan", role: "ACADEMIC_ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Raghavan", status: "ACTIVE", createdAt: "2026-01-15", isVerified: true },
+  { id: "usr-inst1", username: "instructor1", email: "instructor1@swanayamedia.com", name: "Ananthakrishnan S.", role: "INSTRUCTOR", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Ananth", status: "ACTIVE", createdAt: "2026-01-20", isVerified: true },
+  { id: "usr-inst2", username: "instructor2", email: "instructor2@swanayamedia.com", name: "Devika Menon", role: "INSTRUCTOR", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Devika", status: "ACTIVE", createdAt: "2026-01-22", isVerified: true },
+  { id: "usr-stud1", username: "student1", email: "student1@swanayamedia.com", name: "Aravind K. Kumar", role: "STUDENT", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Aravind", status: "ACTIVE", createdAt: "2026-02-01", isVerified: true },
+  { id: "usr-stud2", username: "student2", email: "student2@swanayamedia.com", name: "Riya Maria Joseph", role: "STUDENT", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Riya", status: "ACTIVE", createdAt: "2026-02-05", isVerified: true },
+  { id: "usr-stud3", username: "student3", email: "student3@swanayamedia.com", name: "Gautham S. Kumar", role: "STUDENT", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Gautham", status: "ACTIVE", createdAt: "2026-02-10", isVerified: true },
+  { id: "usr-finance", username: "finance", email: "finance@swanayamedia.com", name: "Harisankar P.", role: "FINANCE", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Hari", status: "ACTIVE", createdAt: "2026-01-12", isVerified: true },
+  { id: "usr-counsel", username: "counsellor", email: "counsellor@swanayamedia.com", name: "Lakshmi S. Bose", role: "COUNSELLOR", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Lakshmi", status: "ACTIVE", createdAt: "2026-01-14", isVerified: true },
+  { id: "usr-career", username: "career", email: "career@swanayamedia.com", name: "Vikram R. Chandran", role: "CAREER", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Vikram", status: "ACTIVE", createdAt: "2026-01-18", isVerified: true },
+  { id: "usr-parent1", username: "parent1", email: "parent1@swanayamedia.com", name: "K. Krishnakumar (Guardian)", role: "PARENT", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Krishnakumar", status: "ACTIVE", createdAt: "2026-02-01", isVerified: true, studentIds: ["stud-1", "stud-3"], guardianPin: "4012" },
+  { id: "usr-parent2", username: "parent2", email: "parent2@swanayamedia.com", name: "Joseph Andrews (Guardian)", role: "PARENT", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Joseph", status: "ACTIVE", createdAt: "2026-02-05", isVerified: true, studentIds: ["stud-2"], guardianPin: "5544" }
 ];
 
 export const INITIAL_INSTRUCTORS: Instructor[] = [
@@ -942,7 +965,171 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
 
 // Helper database controller with localStorage sync
 export class SwanayaDatabase {
+  private static isInitializing = false;
+
   static init() {
+    if (this.isInitializing) return;
+    this.isInitializing = true;
+
+    try {
+      if (!localStorage.getItem("sma_database_cleaned_v1")) {
+        localStorage.setItem("sma_database_cleaned_v1", "true");
+        this.clearAllPreloadedData();
+      }
+
+      const keys = {
+        settings: INITIAL_SETTINGS,
+        courses: [],
+        semesters: [],
+        subjects: [],
+        lessons: [],
+        batches: [],
+        users: INITIAL_USERS,
+        instructors: [],
+        students: [],
+        classes: [],
+        attendance: [],
+        assignments: [],
+        submissions: [],
+        exams: [],
+        results: [],
+        projects: [],
+        hackathons: [],
+        hackathonRegistrations: [],
+        certificates: [],
+        invoices: [],
+        leads: [],
+        applications: [],
+        notifications: [],
+        auditLogs: INITIAL_AUDIT_LOGS
+      };
+
+      Object.entries(keys).forEach(([key, defaultValue]) => {
+        if (!localStorage.getItem(`sma_${key}`)) {
+          localStorage.setItem(`sma_${key}`, JSON.stringify(defaultValue));
+        }
+      });
+    } finally {
+      this.isInitializing = false;
+    }
+  }
+
+  static get<T>(key: string): T {
+    this.init();
+    const data = localStorage.getItem(`sma_${key}`);
+    return data ? JSON.parse(data) : ([] as unknown as T);
+  }
+
+  static set(key: string, value: any) {
+    localStorage.setItem(`sma_${key}`, JSON.stringify(value));
+  }
+
+  static log(userEmail: string, userName: string, action: string, entity: string, previousValue?: string, newValue?: string) {
+    const logs = this.get<AuditLog[]>("auditLogs");
+    const newLog: AuditLog = {
+      id: `log-${Date.now()}`,
+      userEmail,
+      userName,
+      action,
+      entity,
+      previousValue,
+      newValue,
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      ipAddress: "127.0.0.1 (Local Session)"
+    };
+    this.set("auditLogs", [newLog, ...logs]);
+  }
+
+  static clearAllPreloadedData() {
+    const defaultAdmins: User[] = [
+      {
+        id: "usr-md",
+        username: "aadithyan",
+        email: "aadithyan.menon@swanayamedia.com",
+        name: "AADITHYAN M MENON (MD)",
+        role: "MD",
+        status: "ACTIVE",
+        createdAt: new Date().toISOString().split('T')[0],
+        isVerified: true
+      },
+      {
+        id: "usr-navven",
+        username: "navven",
+        email: "navven.admin@swanayamedia.com",
+        name: "NAVVEN (Administrator)",
+        role: "ADMIN",
+        status: "ACTIVE",
+        createdAt: new Date().toISOString().split('T')[0],
+        isVerified: true
+      },
+      {
+        id: "usr-reviewer",
+        username: "reviewer",
+        email: "reviewer@swanayamedia.com",
+        name: "Academic Reviewer",
+        role: "REVIEWER",
+        status: "ACTIVE",
+        createdAt: new Date().toISOString().split('T')[0],
+        isVerified: true
+      },
+      {
+        id: "usr-alumni",
+        username: "alumni",
+        email: "alumni@swanayamedia.com",
+        name: "Alumni Graduate",
+        role: "ALUMNI",
+        status: "ACTIVE",
+        createdAt: new Date().toISOString().split('T')[0],
+        isVerified: true
+      },
+      {
+        id: "usr-superadmin",
+        username: "superadmin",
+        email: "superadmin@swanayamedia.com",
+        name: "Suresh Pillai",
+        role: "SUPER_ADMIN",
+        status: "ACTIVE",
+        createdAt: new Date().toISOString().split('T')[0],
+        isVerified: true
+      }
+    ];
+
+    localStorage.setItem("sma_courses", JSON.stringify([]));
+    localStorage.setItem("sma_semesters", JSON.stringify([]));
+    localStorage.setItem("sma_subjects", JSON.stringify([]));
+    localStorage.setItem("sma_lessons", JSON.stringify([]));
+    localStorage.setItem("sma_batches", JSON.stringify([]));
+    localStorage.setItem("sma_users", JSON.stringify(defaultAdmins));
+    localStorage.setItem("sma_instructors", JSON.stringify([]));
+    localStorage.setItem("sma_students", JSON.stringify([]));
+    localStorage.setItem("sma_classes", JSON.stringify([]));
+    localStorage.setItem("sma_attendance", JSON.stringify([]));
+    localStorage.setItem("sma_assignments", JSON.stringify([]));
+    localStorage.setItem("sma_submissions", JSON.stringify([]));
+    localStorage.setItem("sma_exams", JSON.stringify([]));
+    localStorage.setItem("sma_results", JSON.stringify([]));
+    localStorage.setItem("sma_projects", JSON.stringify([]));
+    localStorage.setItem("sma_hackathons", JSON.stringify([]));
+    localStorage.setItem("sma_hackathonRegistrations", JSON.stringify([]));
+    localStorage.setItem("sma_certificates", JSON.stringify([]));
+    localStorage.setItem("sma_invoices", JSON.stringify([]));
+    localStorage.setItem("sma_leads", JSON.stringify([]));
+    localStorage.setItem("sma_applications", JSON.stringify([]));
+    localStorage.setItem("sma_notifications", JSON.stringify([]));
+    
+    const initialLog: AuditLog = {
+      id: `log-${Date.now()}`,
+      userEmail: "superadmin@swanayamedia.com",
+      userName: "Suresh Pillai",
+      action: "DATA_CLEAR",
+      entity: "Cleared preloaded content for fresh entry",
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      ipAddress: "127.0.0.1 (Local Session)"
+    };
+    localStorage.setItem("sma_auditLogs", JSON.stringify([initialLog]));
+  }
+
+  static restoreDefaultData() {
     const keys = {
       settings: INITIAL_SETTINGS,
       courses: INITIAL_COURSES,
@@ -971,35 +1158,8 @@ export class SwanayaDatabase {
     };
 
     Object.entries(keys).forEach(([key, defaultValue]) => {
-      if (!localStorage.getItem(`sma_${key}`)) {
-        localStorage.setItem(`sma_${key}`, JSON.stringify(defaultValue));
-      }
+      localStorage.setItem(`sma_${key}`, JSON.stringify(defaultValue));
     });
-  }
-
-  static get<T>(key: string): T {
-    this.init();
-    const data = localStorage.getItem(`sma_${key}`);
-    return data ? JSON.parse(data) : ([] as unknown as T);
-  }
-
-  static set(key: string, value: any) {
-    localStorage.setItem(`sma_${key}`, JSON.stringify(value));
-  }
-
-  static log(userEmail: string, userName: string, action: string, entity: string, previousValue?: string, newValue?: string) {
-    const logs = this.get<AuditLog[]>("auditLogs");
-    const newLog: AuditLog = {
-      id: `log-${Date.now()}`,
-      userEmail,
-      userName,
-      action,
-      entity,
-      previousValue,
-      newValue,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      ipAddress: "127.0.0.1 (Local Session)"
-    };
-    this.set("auditLogs", [newLog, ...logs]);
+    this.log("superadmin@swanayamedia.com", "Suresh Pillai", "DATA_RESTORE", "Restored initial seed demo data");
   }
 }
