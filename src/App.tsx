@@ -24,6 +24,8 @@ import CareerPortal from './components/CareerPortal';
 import ParentPortal from './components/ParentPortal';
 import SettingsAuditPortal from './components/SettingsAuditPortal';
 import StudentAiAssistant from './components/StudentAiAssistant';
+import ExaminationAnnouncementBar from './components/ExaminationAnnouncementBar';
+import ExaminationSessionPortal from './components/ExaminationSessionPortal';
 
 import { 
   Home, Users, BookOpen, Layers, Calendar, ClipboardCheck, 
@@ -65,6 +67,8 @@ export default function App() {
   // Reactive DB states for quick modals
   const [batchesList, setBatchesList] = useState<Batch[]>(() => SwanayaDatabase.get<Batch[]>("batches"));
   const [studentsList, setStudentsList] = useState<Student[]>(() => SwanayaDatabase.get<Student[]>("students"));
+  const [coursesList, setCoursesList] = useState<Course[]>(() => SwanayaDatabase.get<Course[]>("courses"));
+  const [subjectsList, setSubjectsList] = useState<Subject[]>(() => SwanayaDatabase.get<Subject[]>("subjects"));
 
   // Fast Batch Scheduler Form State
   const [fastSchedule, setFastSchedule] = useState({
@@ -96,7 +100,9 @@ export default function App() {
   useEffect(() => {
     setBatchesList(SwanayaDatabase.get<Batch[]>("batches"));
     setStudentsList(SwanayaDatabase.get<Student[]>("students"));
-  }, [refreshTrigger, isEnrollModalOpen]);
+    setCoursesList(SwanayaDatabase.get<Course[]>("courses"));
+    setSubjectsList(SwanayaDatabase.get<Subject[]>("subjects"));
+  }, [refreshTrigger, isEnrollModalOpen, isSchedModalOpen]);
 
   // Submit Fast Student Enrollment
   const handleFastEnrollSubmit = (e: React.FormEvent) => {
@@ -510,16 +516,37 @@ export default function App() {
       </div>
 
       {/* Subheader Utility Announcement - Rendered as a DIV so it becomes div:nth-of-type(2) */}
-      <div className="bg-slate-950 border-b border-slate-900 px-6 py-2.5 flex items-center justify-between text-xs text-slate-400">
+      <div className="bg-slate-950 border-b border-slate-900 px-6 py-2 flex items-center justify-between text-xs text-slate-400">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
           <span>Swanaya Media Academy - ERP & LMS Active Session</span>
         </div>
-        <div className="hidden sm:flex items-center gap-4 text-[10px] font-mono text-slate-500">
-          <span>TERM: OCT-DEC 2026</span>
-          <span>SECURE HANDSHAKE: COMPLIANT</span>
+        <div className="flex items-center gap-3">
+          <a
+            href={`https://wa.me/${(settings.adminWhatsAppPhone || "+91 94460 12345").replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=${encodeURIComponent("Hello Admin! I need support regarding Swanaya Media Academy.")}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 rounded text-[11px] font-bold font-mono transition-colors flex items-center gap-1.5"
+            title="Direct WhatsApp access to Admin Desk"
+          >
+            <span>💬 WhatsApp Admin ({settings.adminWhatsAppPhone || "+91 94460 12345"})</span>
+            <ArrowUpRight className="w-3 h-3 text-emerald-400" />
+          </a>
+          <div className="hidden md:flex items-center gap-3 text-[10px] font-mono text-slate-500 border-l border-slate-800 pl-3">
+            <span>TERM: OCT-DEC 2026</span>
+            <span>SECURE HANDSHAKE: COMPLIANT</span>
+          </div>
         </div>
       </div>
+
+      {/* Live Examination Session Announcement & Ticker Bar */}
+      <ExaminationAnnouncementBar 
+        currentUser={activeUser}
+        onOpenExamSession={(sessionId) => {
+          setActivePortalTab('exam');
+        }}
+        onRefresh={handleRefreshAllData}
+      />
 
       {/* Sidebar & Workspace layout wrapper - Rendered as a DIV so it is div:nth-of-type(3) */}
       <div className="flex-grow flex flex-col md:flex-row relative">
@@ -631,6 +658,17 @@ export default function App() {
                 Parent & Guardian Portal
               </button>
             )}
+
+            {/* EXAM SESSIONS & MULTIMEDIA HUB */}
+            <button 
+              onClick={() => { setActivePortalTab('exam'); setMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                activePortalTab === 'exam' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Award className="w-4 h-4 text-amber-500" />
+              Exams & Media Hub
+            </button>
 
             {/* CAREER & PLACEMENTS HUB */}
             {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'CAREER' || activeUser.role === 'REVIEWER') && (
@@ -758,9 +796,17 @@ export default function App() {
             )}
 
             {/* PARENT / GUARDIAN PORTAL RENDER */}
-            {(activePortalTab === 'parent' || activeUser.role === 'PARENT') && (
+            {activePortalTab === 'parent' && (
               <ParentPortal 
                 parentUser={activeUser}
+                onRefreshAllData={handleRefreshAllData}
+              />
+            )}
+
+            {/* EXAM SESSION & MULTIMEDIA HUB RENDER */}
+            {activePortalTab === 'exam' && (
+              <ExaminationSessionPortal 
+                currentUser={activeUser}
                 onRefreshAllData={handleRefreshAllData}
               />
             )}
@@ -956,15 +1002,23 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <label className="text-[10px] text-slate-500 uppercase font-bold">Syllabus Program</label>
-                      <select 
-                        value={fastStudent.courseId}
-                        onChange={(e) => setFastStudent({ ...fastStudent, courseId: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none"
-                      >
-                        <option value="c-1">Web Development & Vibe Coding</option>
-                        <option value="c-2">AI Media Production</option>
-                        <option value="c-3">AI & Business Communication</option>
-                      </select>
+                      {coursesList.length === 0 ? (
+                        <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded text-[10px] text-amber-300">
+                          ⚠️ No courses created yet. Admin must add courses before fast enrollment.
+                        </div>
+                      ) : (
+                        <select 
+                          value={fastStudent.courseId}
+                          onChange={(e) => setFastStudent({ ...fastStudent, courseId: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                        >
+                          {coursesList.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">
@@ -1106,29 +1160,45 @@ export default function App() {
 
                     <div className="space-y-1.5">
                       <label className="text-[10px] text-slate-500 uppercase font-bold font-mono">Course Syllabus</label>
-                      <select 
-                        value={fastSchedule.courseId}
-                        onChange={(e) => setFastSchedule({ ...fastSchedule, courseId: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none"
-                      >
-                        <option value="c-1">Web Dev & Vibe Coding</option>
-                        <option value="c-2">AI Media Production</option>
-                        <option value="c-3">AI & Business Communication</option>
-                      </select>
+                      {coursesList.length === 0 ? (
+                        <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded text-[10px] text-amber-300">
+                          No active courses available.
+                        </div>
+                      ) : (
+                        <select 
+                          value={fastSchedule.courseId}
+                          onChange={(e) => setFastSchedule({ ...fastSchedule, courseId: e.target.value })}
+                          className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                        >
+                          {coursesList.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
                     <label className="text-[10px] text-slate-500 uppercase font-bold font-mono">Subject Paper</label>
-                    <select 
-                      value={fastSchedule.subjectId}
-                      onChange={(e) => setFastSchedule({ ...fastSchedule, subjectId: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none"
-                    >
-                      <option value="sub-101">Advanced HTML5, CSS3 & Tailwind Grid Systems (WD-101)</option>
-                      <option value="sub-102">TypeScript & React Modern Architecture (JS-102)</option>
-                      <option value="sub-301">Vibe Coding, AI & Large Language Models (VC-301)</option>
-                    </select>
+                    {subjectsList.length === 0 ? (
+                      <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded text-[10px] text-amber-300">
+                        No subjects published yet.
+                      </div>
+                    ) : (
+                      <select 
+                        value={fastSchedule.subjectId}
+                        onChange={(e) => setFastSchedule({ ...fastSchedule, subjectId: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none"
+                      >
+                        {subjectsList.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.code})
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">

@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { 
   Users, BookOpen, Layers, UserCheck, Calendar, GraduationCap, DollarSign, 
-  Plus, Edit, Eye, Trash2, Search, Filter, Check, X, FileText, MoveUp, MapPin, Sparkles, AlertTriangle
+  Plus, Edit, Eye, Trash2, Search, Filter, Check, X, FileText, MoveUp, MapPin, Sparkles, AlertTriangle,
+  MessageCircle, ExternalLink, Phone
 } from 'lucide-react';
 import { 
   SwanayaDatabase, Student, Course, Batch, User, Instructor, Semester, Subject, AdmissionApplication, Lead
@@ -73,6 +74,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
     name: '',
     email: '',
     phone: '',
+    whatsappPhone: '',
+    whatsappOptIn: true,
     guardianName: '',
     guardianPhone: '',
     academicBackground: '',
@@ -133,6 +136,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
         name: student.name,
         email: student.email,
         phone: student.phone,
+        whatsappPhone: student.whatsappPhone || student.phone || '',
+        whatsappOptIn: student.whatsappOptIn ?? true,
         guardianName: student.guardianName,
         guardianPhone: student.guardianPhone,
         academicBackground: student.academicBackground,
@@ -148,6 +153,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
         name: '',
         email: '',
         phone: '',
+        whatsappPhone: '',
+        whatsappOptIn: true,
         guardianName: '',
         guardianPhone: '',
         academicBackground: '',
@@ -181,6 +188,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
 
     setStudentModalCapacityWarning(null);
 
+    const finalWhatsapp = studentForm.whatsappPhone.trim() || studentForm.phone.trim() || '+91 94460 00000';
+
     if (editingStudent) {
       // Edit
       const updated = students.map(s => s.id === editingStudent.id ? {
@@ -188,6 +197,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
         name: studentForm.name,
         email: studentForm.email,
         phone: studentForm.phone,
+        whatsappPhone: finalWhatsapp,
+        whatsappOptIn: studentForm.whatsappOptIn,
         guardianName: studentForm.guardianName,
         guardianPhone: studentForm.guardianPhone,
         academicBackground: studentForm.academicBackground,
@@ -198,7 +209,7 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
         outstandingBalance: Number(studentForm.outstandingBalance)
       } : s);
       saveStudents(updated);
-      SwanayaDatabase.log(currentUser.email, currentUser.name, "STUDENT_UPDATE", `Student: ${studentForm.name}`);
+      SwanayaDatabase.log(currentUser.email, currentUser.name, "STUDENT_UPDATE", `Student: ${studentForm.name} (WhatsApp: ${finalWhatsapp})`);
     } else {
       // Create
       const newId = `stud-${Date.now()}`;
@@ -212,6 +223,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
         name: studentForm.name,
         email: studentForm.email,
         phone: studentForm.phone,
+        whatsappPhone: finalWhatsapp,
+        whatsappOptIn: studentForm.whatsappOptIn,
         guardianName: studentForm.guardianName,
         guardianPhone: studentForm.guardianPhone,
         academicBackground: studentForm.academicBackground,
@@ -541,19 +554,39 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
                           {app.status}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 font-mono">{app.email} • {app.phone}</p>
+                      <p className="text-xs text-slate-400 font-mono flex items-center gap-2">
+                        <span>{app.email} • {app.phone}</span>
+                        <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded font-mono">
+                          {courses.find(c => c.id === app.courseId)?.code || 'SMA-ADWDVC'}
+                        </span>
+                      </p>
                       <p className="text-[11px] text-slate-500">Qualification: {app.qualification} | Preferred Batch: {app.preferredBatch}</p>
                       {app.message && <p className="text-[11px] text-slate-400 italic">"{app.message}"</p>}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <a
+                        href={`https://wa.me/${(app.phone || '919446000000').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                          `Hello ${app.name}! This is Swanaya Media Academy Admissions Office regarding your registration for the ${
+                            courses.find(c => c.id === app.courseId)?.name || 'program'
+                          }.`
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1 font-mono"
+                        title="Chat with trainee on WhatsApp"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        WhatsApp
+                      </a>
+
                       {app.status !== 'ACCEPTED' && (
                         <button
                           onClick={() => handleApproveApplication(app.id)}
                           className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1"
                         >
                           <Check className="w-3.5 h-3.5" />
-                          Approve Registration
+                          Approve
                         </button>
                       )}
                       <button
@@ -562,6 +595,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
                             name: app.name,
                             email: app.email,
                             phone: app.phone,
+                            whatsappPhone: app.phone,
+                            whatsappOptIn: true,
                             guardianName: 'Self / Guardian',
                             guardianPhone: app.phone,
                             academicBackground: app.qualification,
@@ -771,7 +806,20 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
                         </span>
                       </td>
                       <td className="p-4 text-right">
-                        <div className="flex gap-1.5 justify-end">
+                        <div className="flex gap-1.5 justify-end items-center">
+                          <a
+                            href={`https://wa.me/${((student.whatsappPhone || student.phone) || '919446000000').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                              `Hello ${student.name}! This is Swanaya Media Academy Admin Office regarding your ${
+                                courses.find(c=>c.id===student.courseId)?.code || 'course'
+                              } schedule.`
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded text-emerald-400 transition-colors"
+                            title={`Chat on WhatsApp (${student.whatsappPhone || student.phone})`}
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                          </a>
                           <button
                             onClick={() => handleOpenStudentModal(student)}
                             className="p-1.5 bg-slate-850 hover:bg-slate-800 border border-slate-800 rounded text-amber-400 transition-colors"
@@ -1207,8 +1255,15 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
                     type="tel" 
                     required
                     value={studentForm.phone}
-                    onChange={(e) => setStudentForm({...studentForm, phone: e.target.value})}
-                    className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-100"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setStudentForm(prev => ({
+                        ...prev,
+                        phone: val,
+                        whatsappPhone: prev.whatsappPhone ? prev.whatsappPhone : val
+                      }));
+                    }}
+                    className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-100 font-mono"
                   />
                 </div>
                 <div className="space-y-1">
@@ -1221,6 +1276,37 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
                     placeholder="e.g. B.Tech / Plus Two"
                     className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-100"
                   />
+                </div>
+              </div>
+
+              {/* WHATSAPP INTEGRATION IN STUDENT MODAL */}
+              <div className="p-3 bg-emerald-950/20 border border-emerald-500/30 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    WhatsApp Number & Alerts
+                  </label>
+                  <span className="text-[9px] font-mono text-emerald-400 font-bold">Official Desk Active</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  <input 
+                    type="tel" 
+                    value={studentForm.whatsappPhone}
+                    onChange={(e) => setStudentForm({...studentForm, whatsappPhone: e.target.value})}
+                    placeholder="WhatsApp Number e.g. +91 94460 00000"
+                    className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-100 font-mono focus:border-emerald-400"
+                  />
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input 
+                      type="checkbox"
+                      checked={studentForm.whatsappOptIn}
+                      onChange={(e) => setStudentForm({...studentForm, whatsappOptIn: e.target.checked})}
+                      className="rounded border-slate-700 text-emerald-500 focus:ring-emerald-400 cursor-pointer"
+                    />
+                    <span className="text-[11px] text-slate-300 font-semibold">
+                      Enable WhatsApp Alerts
+                    </span>
+                  </label>
                 </div>
               </div>
 

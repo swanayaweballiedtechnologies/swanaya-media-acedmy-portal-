@@ -101,6 +101,23 @@ export default function SettingsAuditPortal({ currentUser, onRefreshAllData }: S
             </div>
 
             <div className="space-y-1">
+              <label className="text-[10px] text-emerald-400 uppercase font-bold flex items-center gap-1">
+                <span>💬 Admin WhatsApp Access Phone</span>
+              </label>
+              <input 
+                type="text" 
+                required
+                value={form.adminWhatsAppPhone || '+91 94460 12345'}
+                onChange={(e) => setForm({ ...form, adminWhatsAppPhone: e.target.value })}
+                placeholder="+91 94460 12345"
+                className="w-full bg-slate-950 border border-emerald-500/30 rounded px-3 py-2 text-xs text-emerald-300 font-mono focus:border-emerald-400 focus:outline-none"
+              />
+              <p className="text-[9px] text-slate-500 font-mono">
+                Direct WhatsApp contact number displayed across student registration and portal help desks.
+              </p>
+            </div>
+
+            <div className="space-y-1">
               <label className="text-[10px] text-slate-500 uppercase font-bold">Contact Email</label>
               <input 
                 type="email" 

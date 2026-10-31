@@ -30,12 +30,18 @@ export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Dynamic Database state
+  const coursesList = SwanayaDatabase.get<Course[]>("courses");
+  const academySettings = SwanayaDatabase.get<any>("settings") || {};
+  const adminWhatsAppPhone = academySettings.adminWhatsAppPhone || "+91 94460 12345";
+  const cleanAdminPhone = adminWhatsAppPhone.replace(/[^\d+]/g, '').replace(/^\+/, '');
+
   // Registration state
   const [regName, setRegName] = useState('');
   const [regUsername, setRegUsername] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPhone, setRegPhone] = useState('');
-  const [regCourseId, setRegCourseId] = useState('c-1');
+  const [regCourseId, setRegCourseId] = useState(coursesList[0]?.id || '');
   const [regWhatsappPhone, setRegWhatsappPhone] = useState('');
   const [regWhatsappOptIn, setRegWhatsappOptIn] = useState(true);
   const [regRole, setRegRole] = useState<UserRole>('STUDENT');
@@ -366,7 +372,7 @@ export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps
                 )}
               </button>
 
-              <div className="text-center pt-2">
+              <div className="text-center pt-2 space-y-3">
                 <p className="text-xs text-slate-500">
                   New to Swanaya Academy?{' '}
                   <button
@@ -377,6 +383,19 @@ export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps
                     Register for an Account
                   </button>
                 </p>
+
+                <div className="pt-2 border-t border-slate-800">
+                  <a
+                    href={`https://wa.me/${cleanAdminPhone}?text=${encodeURIComponent('Hello Admin! I need assistance with logging in or getting portal access to Swanaya Media Academy.')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-1.5 w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 rounded text-xs font-bold font-mono transition-colors"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>WhatsApp Admin Access ({adminWhatsAppPhone})</span>
+                    <ExternalLink className="w-3 h-3 text-emerald-400" />
+                  </a>
+                </div>
               </div>
             </form>
           )}
@@ -476,24 +495,52 @@ export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps
               </div>
 
               {/* COURSE SELECTION INTEGRATION */}
-              <div className="space-y-1 bg-slate-950/60 p-3 border border-slate-800 rounded-lg">
+              <div className="space-y-2 bg-slate-950/60 p-3.5 border border-slate-800 rounded-lg">
                 <label className="text-[10px] text-amber-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
                   <BookOpen className="w-3.5 h-3.5 text-amber-400" />
                   Select Enrolled / Preferred Course *
                 </label>
-                <select
-                  value={regCourseId}
-                  onChange={(e) => setRegCourseId(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-400 font-semibold cursor-pointer"
-                >
-                  <option value="c-1">SMA-ADWDVC: Advanced Diploma in Web Development & Vibe Coding (12 Months)</option>
-                  <option value="c-2">SMA-DAIMPIDM: Diploma in AI Media Production & Digital Marketing (6 Months)</option>
-                  <option value="c-3">SMA-AIBC: AI & Business Communication (3 Months)</option>
-                  <option value="c-4">SMA-CCVF: Content Creation & Videography Fundamentals (3 Months)</option>
-                </select>
-                <p className="text-[10px] text-slate-500 font-mono">
-                  Your student account will be linked to this course blueprint upon activation.
-                </p>
+                
+                {coursesList.length === 0 ? (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded text-amber-300 text-xs space-y-2">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-400">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>No Courses Published Yet</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-normal">
+                      The admin has not published any courses yet. No preloaded dummy courses are shown. Please contact Admin via WhatsApp to get course access or wait for Admin to update courses.
+                    </p>
+                    <a
+                      href={`https://wa.me/${cleanAdminPhone}?text=${encodeURIComponent(
+                        `Hello Admin! I am trying to register for a course at Swanaya Media Academy. My name is ${regName || 'Student'}. Please share available courses.`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 w-full py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold font-mono transition-colors"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>Contact Admin on WhatsApp ({adminWhatsAppPhone})</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      value={regCourseId}
+                      onChange={(e) => setRegCourseId(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-400 font-semibold cursor-pointer"
+                    >
+                      {coursesList.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code ? `${c.code}: ` : ''}{c.name} ({c.duration || 'Flexible'})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-500 font-mono">
+                      Your student profile will be linked to this active syllabus.
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* WHATSAPP INTEGRATION SECTION */}
@@ -504,7 +551,7 @@ export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps
                     WhatsApp Direct Integration
                   </label>
                   <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.2 rounded font-bold">
-                    Official Desk: +91 94460 00000
+                    Admin Desk: {adminWhatsAppPhone}
                   </span>
                 </div>
 
@@ -514,7 +561,7 @@ export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps
                     type="tel"
                     value={regWhatsappPhone}
                     onChange={(e) => setRegWhatsappPhone(e.target.value)}
-                    placeholder="WhatsApp Number (e.g. +91 94460 00000)"
+                    placeholder={`WhatsApp Number (e.g. ${adminWhatsAppPhone})`}
                     className="w-full bg-slate-950 border border-slate-800 rounded pl-8 pr-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-400 font-mono"
                   />
                 </div>
@@ -534,18 +581,14 @@ export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps
                 {/* Direct WhatsApp Pre-filled Chat Trigger */}
                 <div className="pt-1">
                   <a
-                    href={`https://wa.me/919446000000?text=${encodeURIComponent(
-                      `Hello Swanaya Media Academy! I am registering for the ${
-                        regCourseId === 'c-1' ? 'Advanced Diploma in Web Development' :
-                        regCourseId === 'c-2' ? 'AI Media Production' :
-                        regCourseId === 'c-3' ? 'AI Business Communication' : 'Content Creation'
-                      } course. My name is ${regName || 'Student'}.`
+                    href={`https://wa.me/${cleanAdminPhone}?text=${encodeURIComponent(
+                      `Hello Swanaya Media Academy Admin! I am registering on the portal as ${regName || 'a new user'} (${regRole}). Please assist with account setup.`
                     )}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 hover:text-emerald-300 hover:underline transition-colors font-mono"
                   >
-                    <span>💬 Test WhatsApp Connect to Desk</span>
+                    <span>💬 WhatsApp Admin Access Desk</span>
                     <ExternalLink className="w-3 h-3 text-emerald-400" />
                   </a>
                 </div>
