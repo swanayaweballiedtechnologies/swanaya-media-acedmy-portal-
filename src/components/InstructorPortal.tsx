@@ -13,7 +13,6 @@ import {
   AttendanceRecord, Assignment, Submission, Project, Course, Lesson, Batch
 } from '../db/mockDb';
 import ExaminationEngineModule from './ExaminationEngineModule';
-import ExamAnnouncementsPortal from './ExamAnnouncementsPortal';
 
 interface InstructorPortalProps {
   instructorUser: Instructor;
@@ -34,7 +33,7 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
   const [lessons, setLessons] = useState<Lesson[]>(() => SwanayaDatabase.get<Lesson[]>("lessons"));
   const [batches] = useState<Batch[]>(() => SwanayaDatabase.get<Batch[]>("batches"));
 
-  const [activeTab, setActiveTab] = useState<'attendance' | 'assignments' | 'projects' | 'uploads' | 'question-papers' | 'mcq-exams' | 'exam-eval' | 'announcements'>('attendance');
+  const [activeTab, setActiveTab] = useState<'attendance' | 'assignments' | 'projects' | 'uploads' | 'question-papers' | 'mcq-exams' | 'exam-eval'>('attendance');
 
   // Attendance states (Hourly tracking added!)
   const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
@@ -327,14 +326,6 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
           }`}
         >
           Answerbook Evaluation
-        </button>
-        <button 
-          onClick={() => setActiveTab('announcements')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-            activeTab === 'announcements' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Exam Announcements
         </button>
       </div>
 
@@ -760,14 +751,6 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
               ? 'mcq'
               : 'evaluations'
           }
-          currentUser={currentUser}
-          onRefreshAllData={onRefreshAllData}
-        />
-      )}
-
-      {/* EXAMINATION ANNOUNCEMENTS */}
-      {activeTab === 'announcements' && (
-        <ExamAnnouncementsPortal
           currentUser={currentUser}
           onRefreshAllData={onRefreshAllData}
         />

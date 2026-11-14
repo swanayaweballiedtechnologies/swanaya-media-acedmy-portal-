@@ -6,16 +6,18 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BookOpen, Star, CheckCircle2, Phone, Mail, MapPin, Sparkles, Send, 
-  GraduationCap, Code, Video, Globe, Terminal, Calendar, User, ExternalLink, ArrowUpRight, AlertCircle, X, MessageSquarePlus 
+  GraduationCap, Code, Video, Globe, Terminal, Calendar, User, ExternalLink, ArrowUpRight, AlertCircle, X, MessageSquarePlus, Film 
 } from 'lucide-react';
-import { SwanayaDatabase, Course, AcademyReview, FrontPageConfig, INITIAL_FRONT_PAGE_CONFIG, AcademySettings } from '../db/mockDb';
+import { SwanayaDatabase, Course, AcademyReview, FrontPageConfig, FrontPagePosterItem, INITIAL_FRONT_PAGE_CONFIG, AcademySettings } from '../db/mockDb';
 import { academyService } from '../services/academyService';
 import { auth } from '../firebase';
 import VisualCaptcha from './VisualCaptcha';
 import { applyDocumentFavicon } from '../utils/favicon';
+import { parseFrontPageVideoUrl } from '../utils/mediaHelpers';
 
 interface PublicLandingProps {
   onNavigateToPortal: () => void;
+  onNavigateToCourseSelection?: (courseId?: string) => void;
   courses: Course[];
   onApplyLead: (leadData: { name: string; email: string; phone: string; courseId: string; qualification: string; preferredBatch: string; message: string }) => void;
 }
@@ -33,6 +35,10 @@ function mergeFrontPage(partial?: Partial<FrontPageConfig> | null): FrontPageCon
       Array.isArray(safe.philosophyPillars) && safe.philosophyPillars.length > 0
         ? safe.philosophyPillars
         : INITIAL_FRONT_PAGE_CONFIG.philosophyPillars,
+    posters:
+      Array.isArray(safe.posters)
+        ? safe.posters
+        : INITIAL_FRONT_PAGE_CONFIG.posters,
     showReviewsSection:
       typeof safe.showReviewsSection === 'boolean'
         ? safe.showReviewsSection
@@ -45,10 +51,14 @@ function mergeFrontPage(partial?: Partial<FrontPageConfig> | null): FrontPageCon
       typeof safe.showAdmissionsSection === 'boolean'
         ? safe.showAdmissionsSection
         : INITIAL_FRONT_PAGE_CONFIG.showAdmissionsSection,
+    showMediaShowcaseSection:
+      typeof safe.showMediaShowcaseSection === 'boolean'
+        ? safe.showMediaShowcaseSection
+        : INITIAL_FRONT_PAGE_CONFIG.showMediaShowcaseSection,
   };
 }
 
-export default function PublicLanding({ onNavigateToPortal, courses, onApplyLead }: PublicLandingProps) {
+export default function PublicLanding({ onNavigateToPortal, onNavigateToCourseSelection, courses, onApplyLead }: PublicLandingProps) {
   const [frontPage, setFrontPage] = useState<FrontPageConfig>(() =>
     mergeFrontPage(SwanayaDatabase.get<FrontPageConfig>('frontPageConfig'))
   );
@@ -156,6 +166,11 @@ export default function PublicLanding({ onNavigateToPortal, courses, onApplyLead
   const headerLogoSrc =
     frontPage.brandLogoUrl?.trim() ||
     (frontPage.faviconUrl && frontPage.faviconUrl.trim() !== '/favicon.svg' ? frontPage.faviconUrl.trim() : '');
+  const parsedFeaturedVideo = parseFrontPageVideoUrl(frontPage.featuredVideoUrl);
+  const validPosters = (frontPage.posters || []).filter((p) => p.imageUrl?.trim() || p.title?.trim());
+  const hasMediaShowcase =
+    frontPage.showMediaShowcaseSection && (Boolean(parsedFeaturedVideo) || validPosters.length > 0);
+  const [selectedPoster, setSelectedPoster] = useState<FrontPagePosterItem | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -314,10 +329,21 @@ export default function PublicLanding({ onNavigateToPortal, courses, onApplyLead
             </span>
           </div>
 
-          {/* Zone 2: Nav Links (4-6 links) */}
-          <nav className="hidden md:flex items-center gap-8 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          {/* Zone 2: Nav Links */}
+          <nav className="hidden md:flex items-center gap-7 text-xs font-semibold uppercase tracking-wider text-slate-400">
+            {hasMediaShowcase && (
+              <a href="#showcase" className="hover:text-amber-400 transition-colors whitespace-nowrap shrink-0">Showcase</a>
+            )}
             <a href="#courses" className="hover:text-amber-400 transition-colors whitespace-nowrap shrink-0">Programs</a>
-            <a href="#philosophy" className="hover:text-amber-400 transition-colors whitespace-nowrap shrink-0">Philosophy</a>
+            {onNavigateToCourseSelection && (
+              <button
+                type="button"
+                onClick={() => onNavigateToCourseSelection()}
+                className="hover:text-amber-400 transition-colors whitespace-nowrap shrink-0 cursor-pointer uppercase tracking-wider"
+              >
+                Select Course
+              </button>
+            )}
             {frontPage.showReviewsSection && (
               <a href="#reviews" className="hover:text-amber-400 transition-colors whitespace-nowrap shrink-0">Reviews</a>
             )}
@@ -368,17 +394,27 @@ export default function PublicLanding({ onNavigateToPortal, courses, onApplyLead
                 {frontPage.showAdmissionsSection && (
                   <a 
                     href="#admissions" 
-                    className="px-6 py-3 text-center text-xs font-bold tracking-wider uppercase bg-amber-500 hover:bg-amber-400 text-black rounded transition-colors"
+                    className="px-6 py-3 text-center text-xs font-bold tracking-wider uppercase bg-amber-500 hover:bg-amber-400 text-black rounded transition-colors whitespace-nowrap"
                   >
                     {frontPage.heroPrimaryCta}
                   </a>
                 )}
-                <a 
-                  href="#courses" 
-                  className="px-6 py-3 text-center text-xs font-bold tracking-wider uppercase bg-slate-800/80 hover:bg-slate-700/80 text-white rounded border border-slate-700 transition-colors"
-                >
-                  {frontPage.heroSecondaryCta}
-                </a>
+                {onNavigateToCourseSelection ? (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToCourseSelection()}
+                    className="px-6 py-3 text-center text-xs font-bold tracking-wider uppercase bg-slate-800/80 hover:bg-slate-700/80 text-white rounded border border-slate-700 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    {frontPage.heroSecondaryCta}
+                  </button>
+                ) : (
+                  <a 
+                    href="#courses" 
+                    className="px-6 py-3 text-center text-xs font-bold tracking-wider uppercase bg-slate-800/80 hover:bg-slate-700/80 text-white rounded border border-slate-700 transition-colors whitespace-nowrap"
+                  >
+                    {frontPage.heroSecondaryCta}
+                  </a>
+                )}
               </div>
             </div>
 
@@ -414,6 +450,184 @@ export default function PublicLanding({ onNavigateToPortal, courses, onApplyLead
           </div>
         </section>
 
+        {/* POSTERS & FEATURED VIDEO SHOWCASE */}
+        {hasMediaShowcase && (
+          <section id="showcase" className="py-20 border-b border-slate-900 bg-slate-950/40">
+            <div className="max-w-7xl mx-auto px-6 space-y-12">
+              <div className="text-center max-w-2xl mx-auto space-y-3">
+                <span className="text-xs font-semibold tracking-widest text-amber-400 uppercase">
+                  {frontPage.mediaSectionEyebrow}
+                </span>
+                <h2 className="text-3xl md:text-4xl font-bold font-serif text-white">
+                  {frontPage.mediaSectionTitle}
+                </h2>
+                <p className="text-slate-400 text-sm">{frontPage.mediaSectionSubtitle}</p>
+              </div>
+
+              {parsedFeaturedVideo && (
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
+                  <div className="aspect-video w-full bg-black">
+                    {parsedFeaturedVideo.kind === 'youtube' || parsedFeaturedVideo.kind === 'vimeo' ? (
+                      <iframe
+                        src={parsedFeaturedVideo.src}
+                        title={frontPage.featuredVideoTitle || 'Featured Academy Video'}
+                        className="w-full h-full"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    ) : (
+                      <video
+                        src={parsedFeaturedVideo.src}
+                        poster={frontPage.featuredVideoPosterUrl || undefined}
+                        controls
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                  {(frontPage.featuredVideoTitle || frontPage.featuredVideoCaption) && (
+                    <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-slate-800">
+                      <div className="space-y-1">
+                        {frontPage.featuredVideoTitle && (
+                          <h3 className="text-lg font-serif font-bold text-white flex items-center gap-2">
+                            <Film className="w-4 h-4 text-amber-400 shrink-0" />
+                            <span>{frontPage.featuredVideoTitle}</span>
+                          </h3>
+                        )}
+                        {frontPage.featuredVideoCaption && (
+                          <p className="text-xs text-slate-400 leading-relaxed">{frontPage.featuredVideoCaption}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {validPosters.length > 0 && (
+                <div
+                  className={`grid grid-cols-1 ${
+                    validPosters.length === 1
+                      ? 'max-w-2xl mx-auto'
+                      : validPosters.length === 2
+                      ? 'md:grid-cols-2'
+                      : 'md:grid-cols-2 lg:grid-cols-3'
+                  } gap-6`}
+                >
+                  {validPosters.map((poster) => (
+                    <article
+                      key={poster.id}
+                      className="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden flex flex-col justify-between group hover:border-amber-500/40 transition-colors"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPoster(poster)}
+                        className="relative aspect-[4/3] w-full bg-slate-950 overflow-hidden cursor-pointer text-left"
+                      >
+                        {poster.imageUrl ? (
+                          <img
+                            src={poster.imageUrl}
+                            alt={poster.title || 'Academy promotional poster'}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-slate-900">
+                            <Film className="w-8 h-8 text-amber-400/50" />
+                          </div>
+                        )}
+                      </button>
+
+                      <div className="p-5 flex-1 flex flex-col justify-between gap-4">
+                        <div className="space-y-1.5">
+                          <h3 className="text-base font-serif font-bold text-white group-hover:text-amber-300 transition-colors">
+                            {poster.title}
+                          </h3>
+                          {poster.caption && (
+                            <p className="text-xs text-slate-400 leading-relaxed">{poster.caption}</p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-800/60">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPoster(poster)}
+                            className="text-xs font-medium text-slate-300 hover:text-amber-300 cursor-pointer"
+                          >
+                            View Full Poster
+                          </button>
+                          {poster.ctaLabel && poster.ctaUrl && (
+                            <a
+                              href={poster.ctaUrl}
+                              target={poster.ctaUrl.startsWith('http') ? '_blank' : undefined}
+                              rel={poster.ctaUrl.startsWith('http') ? 'noopener noreferrer' : undefined}
+                              className="text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 whitespace-nowrap"
+                            >
+                              <span>{poster.ctaLabel}</span>
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {selectedPoster && (
+          <div
+            className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4"
+            onClick={() => setSelectedPoster(null)}
+          >
+            <div
+              className="bg-[#0B0F17] border border-slate-800 rounded-xl max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-5 py-3.5 flex items-center justify-between gap-4">
+                <span className="text-sm font-serif font-bold text-white truncate">{selectedPoster.title}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPoster(null)}
+                  className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 hover:text-white cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {selectedPoster.imageUrl && (
+                  <img
+                    src={selectedPoster.imageUrl}
+                    alt={selectedPoster.title}
+                    referrerPolicy="no-referrer"
+                    className="w-full max-h-[70vh] object-contain rounded-lg bg-black"
+                  />
+                )}
+                {selectedPoster.caption && (
+                  <p className="text-sm text-slate-300 leading-relaxed">{selectedPoster.caption}</p>
+                )}
+                {selectedPoster.ctaLabel && selectedPoster.ctaUrl && (
+                  <div className="pt-2">
+                    <a
+                      href={selectedPoster.ctaUrl}
+                      onClick={() => {
+                        if (selectedPoster.ctaUrl?.startsWith('#')) setSelectedPoster(null);
+                      }}
+                      target={selectedPoster.ctaUrl.startsWith('http') ? '_blank' : undefined}
+                      rel={selectedPoster.ctaUrl.startsWith('http') ? 'noopener noreferrer' : undefined}
+                      className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded"
+                    >
+                      <span>{selectedPoster.ctaLabel}</span>
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* FEATURED PROGRAMS SECTION */}
         <section id="courses" className="py-20 max-w-7xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
@@ -447,19 +661,42 @@ export default function PublicLanding({ onNavigateToPortal, courses, onApplyLead
                     <span aria-hidden="true" className="text-slate-700">·</span>
                     <span>Mode: {course.mode}</span>
                     <span aria-hidden="true" className="text-slate-700">·</span>
-                    <span className="text-amber-500 font-semibold font-mono">₹{course.fee.toLocaleString('en-IN')}</span>
+                    <span className="text-amber-500 font-semibold font-mono">₹{Number(course.fee || 0).toLocaleString('en-IN')}</span>
                   </div>
                 </div>
 
                 <div className="pt-6 mt-6 border-t border-slate-800/40 flex items-center justify-between">
                   <span className="text-[11px] text-slate-500">Coordinator: {course.coordinator}</span>
-                  <a href="#admissions" className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors">
-                    Enroll Now →
-                  </a>
+                  {onNavigateToCourseSelection ? (
+                    <button
+                      type="button"
+                      onClick={() => onNavigateToCourseSelection(course.id)}
+                      className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      Select Course &amp; Options →
+                    </button>
+                  ) : (
+                    <a href="#admissions" className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors">
+                      Enroll Now →
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
           </div>
+
+          {onNavigateToCourseSelection && (
+            <div className="mt-10 text-center">
+              <button
+                type="button"
+                onClick={() => onNavigateToCourseSelection()}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded transition-colors cursor-pointer"
+              >
+                <span>Open Dedicated Course Selection Page</span>
+                <ArrowUpRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </section>
 
         {/* PHILOSOPHY & WHY SWANAYA */}
@@ -860,6 +1097,18 @@ export default function PublicLanding({ onNavigateToPortal, courses, onApplyLead
               <span className="text-xs font-semibold tracking-widest text-amber-400 uppercase">{frontPage.admissionsEyebrow}</span>
               <h2 className="text-3xl font-serif text-white">{frontPage.admissionsTitle}</h2>
               <p className="text-slate-400 text-sm">{frontPage.admissionsSubtitle}</p>
+              {onNavigateToCourseSelection && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToCourseSelection(formData.courseId)}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-4 cursor-pointer"
+                  >
+                    <span>Configure All 3 Course Options on Dedicated Selection Page</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-8 backdrop-blur-sm shadow-xl">

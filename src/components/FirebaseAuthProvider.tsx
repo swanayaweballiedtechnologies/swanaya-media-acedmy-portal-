@@ -85,7 +85,7 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, []);
 
-  const isAdmin = profile?.role === 'SUPER_ADMIN' || profile?.role === 'MD' || profile?.role === 'ADMIN' || profile?.role === 'ACADEMIC_ADMIN';
+  const isAdmin = profile?.role === 'SUPER_ADMIN' || profile?.role === 'MD' || profile?.role === 'PRINCIPAL' || profile?.role === 'ADMIN' || profile?.role === 'ACADEMIC_ADMIN';
   const isStudent = profile?.role === 'STUDENT';
 
   return (

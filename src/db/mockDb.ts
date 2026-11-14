@@ -7,6 +7,7 @@
 export type UserRole =
   | 'SUPER_ADMIN'
   | 'MD'
+  | 'PRINCIPAL'
   | 'ADMIN'
   | 'ACADEMIC_ADMIN'
   | 'INSTRUCTOR'
@@ -25,8 +26,16 @@ export interface User {
   name: string;
   role: UserRole;
   avatarUrl?: string;
+  avatarFocus?: 'center' | 'top';
+  phone?: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  academicBackground?: string;
+  skills?: string[];
+  bio?: string;
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: string;
+  updatedAt?: string;
   isVerified?: boolean;
   studentIds?: string[];
   guardianPin?: string;
@@ -500,9 +509,62 @@ export interface AdmissionApplication {
   qualification: string;
   preferredBatch: string;
   message: string;
+  levelFilter?: string;
+  studyMode?: 'HYBRID' | 'PHYSICAL' | 'ONLINE';
+  preferredSchedule?: string;
+  experienceLevel?: string;
+  careerTrack?: string;
   status: 'NEW' | 'CONTACTED' | 'COUNSELLING' | 'APPLIED' | 'UNDER_REVIEW' | 'ACCEPTED' | 'REJECTED' | 'ENROLLED';
   leadSource: string;
   createdAt: string;
+  departmentVerificationStatus?: 'PENDING' | 'VERIFIED' | 'RETURNED' | 'REJECTED';
+  departmentVerifiedBy?: string;
+  departmentVerifiedRole?: string;
+  departmentVerifiedAt?: string;
+  departmentRemarks?: string;
+  mdVerificationStatus?: 'PENDING_MD' | 'VERIFIED' | 'REJECTED';
+  mdVerifiedBy?: string;
+  mdVerifiedAt?: string;
+  mdRemarks?: string;
+}
+
+export interface CourseSelectionRegistration {
+  id: string;
+  userId: string;
+  studentId: string;
+  studentName: string;
+  studentEmail?: string;
+  studentPhone?: string;
+  source?: string;
+  courseId: string;
+  courseCode?: string;
+  courseTitle: string;
+  courseCategory?: string;
+  answers?: {
+    levelFilter?: string;
+    studyMode?: string;
+    preferredBatch?: string;
+    preferredSchedule?: string;
+    qualification?: string;
+    experienceLevel?: string;
+    priorExperience?: string;
+    careerGoals?: string;
+    reason?: string;
+  };
+  status: 'PENDING' | 'DEPARTMENT_VERIFIED' | 'MD_VERIFIED' | 'APPROVED' | 'RETURNED' | 'REJECTED';
+  departmentVerificationStatus: 'PENDING' | 'VERIFIED' | 'RETURNED' | 'REJECTED';
+  departmentVerifiedBy?: string;
+  departmentVerifiedRole?: string;
+  departmentVerifiedAt?: string;
+  departmentRemarks?: string;
+  mdVerificationStatus: 'PENDING_MD' | 'VERIFIED' | 'REJECTED';
+  mdVerifiedBy?: string;
+  mdVerifiedAt?: string;
+  mdRemarks?: string;
+  captchaVerifiedAt?: string;
+  timestamp?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Lead {
@@ -564,6 +626,15 @@ export interface FrontPagePillar {
   description: string;
 }
 
+export interface FrontPagePosterItem {
+  id: string;
+  title: string;
+  caption: string;
+  imageUrl: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+}
+
 export interface FrontPageConfig {
   id: string;
   faviconUrl: string;
@@ -610,6 +681,15 @@ export interface FrontPageConfig {
   showReviewsSection: boolean;
   showBlogSection: boolean;
   showAdmissionsSection: boolean;
+  showMediaShowcaseSection: boolean;
+  mediaSectionEyebrow: string;
+  mediaSectionTitle: string;
+  mediaSectionSubtitle: string;
+  featuredVideoTitle: string;
+  featuredVideoCaption: string;
+  featuredVideoUrl: string;
+  featuredVideoPosterUrl: string;
+  posters: FrontPagePosterItem[];
   updatedAt: string;
   updatedBy: string;
 }
@@ -707,6 +787,15 @@ export const INITIAL_FRONT_PAGE_CONFIG: FrontPageConfig = {
   showReviewsSection: true,
   showBlogSection: true,
   showAdmissionsSection: true,
+  showMediaShowcaseSection: true,
+  mediaSectionEyebrow: "CAMPUS SPOTLIGHT",
+  mediaSectionTitle: "Posters & Featured Video",
+  mediaSectionSubtitle: "Explore official academy posters, upcoming studio workshops, and featured campus reels.",
+  featuredVideoTitle: "Inside Swanaya Media Academy",
+  featuredVideoCaption: "Take a closer look at our cinema stages, AI engineering studios, and live cohort builds.",
+  featuredVideoUrl: "",
+  featuredVideoPosterUrl: "",
+  posters: [],
   updatedAt: "2026-10-01T00:00:00.000Z",
   updatedBy: "System Default"
 };
@@ -719,6 +808,7 @@ export const INITIAL_BATCHES: Batch[] = [];
 
 export const INITIAL_USERS: User[] = [
   { id: "usr-md", username: "aadithyan", email: "aadithyan.menon@swanayamedia.com", name: "AADITHYAN M MENON", role: "MD", avatarUrl: "https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon", status: "ACTIVE", createdAt: "2026-01-01", isVerified: true },
+  { id: "usr-principal", username: "principal", email: "principal@swanayamedia.com", name: "Academy Principal", role: "PRINCIPAL", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Principal", status: "ACTIVE", createdAt: "2026-01-01", isVerified: true },
   { id: "usr-navven", username: "navven", email: "navven.admin@swanayamedia.com", name: "NAVVEN (Administrator)", role: "ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Naveen", status: "ACTIVE", createdAt: "2026-01-02", isVerified: true },
   { id: "usr-reviewer", username: "reviewer", email: "reviewer@swanayamedia.com", name: "Academic Reviewer", role: "REVIEWER", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Reviewer", status: "ACTIVE", createdAt: "2026-01-05", isVerified: true },
   { id: "usr-alumni", username: "alumni", email: "alumni@swanayamedia.com", name: "Alumni Graduate", role: "ALUMNI", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alumni", status: "ACTIVE", createdAt: "2026-01-08", isVerified: true }
@@ -794,6 +884,7 @@ export class SwanayaDatabase {
         invoices: [],
         leads: [],
         applications: [],
+        courseRegistrations: [],
         notifications: [],
         auditLogs: [],
         examAnnouncements: [],
@@ -810,6 +901,18 @@ export class SwanayaDatabase {
           localStorage.setItem(`sma_${key}`, JSON.stringify(defaultValue));
         }
       });
+
+      if (!localStorage.getItem("sma_principal_role_seeded_v1")) {
+        localStorage.setItem("sma_principal_role_seeded_v1", "true");
+        const existingUsersRaw = localStorage.getItem("sma_users");
+        const existingUsers: User[] = existingUsersRaw ? JSON.parse(existingUsersRaw) : [];
+        if (Array.isArray(existingUsers) && !existingUsers.some((u) => u.role === "PRINCIPAL")) {
+          const principalSeed = INITIAL_USERS.find((u) => u.role === "PRINCIPAL");
+          if (principalSeed) {
+            localStorage.setItem("sma_users", JSON.stringify([existingUsers[0], principalSeed, ...existingUsers.slice(1)].filter(Boolean)));
+          }
+        }
+      }
     } finally {
       this.isInitializing = false;
     }
@@ -849,6 +952,17 @@ export class SwanayaDatabase {
         email: "aadithyan.menon@swanayamedia.com",
         name: "AADITHYAN M MENON",
         role: "MD",
+        status: "ACTIVE",
+        createdAt: new Date().toISOString().split('T')[0],
+        isVerified: true
+      },
+      {
+        id: "usr-principal",
+        username: "principal",
+        email: "principal@swanayamedia.com",
+        name: "Academy Principal",
+        role: "PRINCIPAL",
+        avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Principal",
         status: "ACTIVE",
         createdAt: new Date().toISOString().split('T')[0],
         isVerified: true
@@ -906,6 +1020,7 @@ export class SwanayaDatabase {
     localStorage.setItem("sma_invoices", JSON.stringify([]));
     localStorage.setItem("sma_leads", JSON.stringify([]));
     localStorage.setItem("sma_applications", JSON.stringify([]));
+    localStorage.setItem("sma_courseRegistrations", JSON.stringify([]));
     localStorage.setItem("sma_notifications", JSON.stringify([]));
     localStorage.setItem("sma_examAnnouncements", JSON.stringify([]));
     localStorage.setItem("sma_examSessions", JSON.stringify([]));

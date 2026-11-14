@@ -22,7 +22,15 @@ service cloud.firestore {
       return isSignedIn() && (
         isAdminEmail() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['MD', 'ADMIN', 'SUPER_ADMIN', 'ACADEMIC_ADMIN'])
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['MD', 'PRINCIPAL', 'ADMIN', 'SUPER_ADMIN', 'ACADEMIC_ADMIN'])
+      );
+    }
+
+    function isMdOrPrincipal() {
+      return isSignedIn() && (
+        isAdminEmail() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['MD', 'PRINCIPAL', 'SUPER_ADMIN'])
       );
     }
 
@@ -34,13 +42,38 @@ service cloud.firestore {
       );
     }
 
+    function isDepartmentStaff() {
+      return isSignedIn() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['INSTRUCTOR', 'REVIEWER', 'COUNSELLOR'])
+      );
+    }
+
     // --- Validation Blueprints ---
     function isValidUser(data) {
       return data.keys().hasAll(['id', 'name', 'email', 'role']) &&
-             data.keys().hasOnly(['id', 'name', 'email', 'role', 'avatarUrl', 'status', 'createdAt']) &&
+             data.keys().hasOnly([
+               'id', 'name', 'email', 'role', 'avatarUrl', 'avatarFocus',
+               'phone', 'whatsappPhone', 'guardianName', 'guardianPhone',
+               'academicBackground', 'skills', 'bio', 'status', 'createdAt', 'updatedAt'
+             ]) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
-             data.email is string && data.email.size() > 0 &&
-             data.role is string && data.role in ['MD', 'STUDENT', 'ADMIN', 'INSTRUCTOR', 'PARENT', 'SUPER_ADMIN'];
+             data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
+             data.role is string && data.role in ['MD', 'PRINCIPAL', 'STUDENT', 'ADMIN', 'ACADEMIC_ADMIN', 'INSTRUCTOR', 'ALUMNI', 'REVIEWER', 'FINANCE', 'COUNSELLOR', 'CAREER', 'PARENT', 'SUPER_ADMIN'] &&
+             (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 250000)) &&
+             (!('avatarFocus' in data) || data.avatarFocus in ['center', 'top']) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 64)) &&
+             (!('whatsappPhone' in data) || (data.whatsappPhone is string && data.whatsappPhone.size() <= 64)) &&
+             (!('guardianName' in data) || (data.guardianName is string && data.guardianName.size() <= 150)) &&
+             (!('guardianPhone' in data) || (data.guardianPhone is string && data.guardianPhone.size() <= 64)) &&
+             (!('academicBackground' in data) || (data.academicBackground is string && data.academicBackground.size() <= 300)) &&
+             (!('skills' in data) || (data.skills is list && data.skills.size() <= 25)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 1000)) &&
+             (!('status' in data) || (data.status is string && data.status.size() <= 40)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
     function isValidBlog(data) {
@@ -60,6 +93,44 @@ service cloud.firestore {
              data.url is string && data.url.size() <= 2048 &&
              data.type in ['IMAGE', 'VIDEO', 'DOCUMENT'] &&
              data.uploadedBy == request.auth.uid;
+    }
+
+    function isValidRegistration(data) {
+      return data.keys().hasAll(['id', 'userId', 'studentId', 'studentName', 'courseId', 'courseTitle', 'status', 'departmentVerificationStatus', 'mdVerificationStatus']) &&
+             data.keys().hasOnly([
+               'id', 'userId', 'studentId', 'studentName', 'studentEmail', 'studentPhone', 'source',
+               'courseId', 'courseCode', 'courseTitle', 'courseCategory', 'answers', 'status',
+               'departmentVerificationStatus', 'departmentVerifiedBy', 'departmentVerifiedRole',
+               'departmentVerifiedAt', 'departmentRemarks',
+               'mdVerificationStatus', 'mdVerifiedBy', 'mdVerifiedAt', 'mdRemarks',
+               'captchaVerifiedAt', 'timestamp', 'createdAt', 'updatedAt'
+             ]) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.studentId is string && data.studentId.size() > 0 && data.studentId.size() <= 128 &&
+             data.studentName is string && data.studentName.size() > 0 && data.studentName.size() <= 200 &&
+             (!('studentEmail' in data) || (data.studentEmail is string && data.studentEmail.size() <= 200)) &&
+             (!('studentPhone' in data) || (data.studentPhone is string && data.studentPhone.size() <= 64)) &&
+             (!('source' in data) || (data.source is string && data.source.size() <= 64)) &&
+             data.courseId is string && data.courseId.size() > 0 && data.courseId.size() <= 128 &&
+             (!('courseCode' in data) || (data.courseCode is string && data.courseCode.size() <= 64)) &&
+             data.courseTitle is string && data.courseTitle.size() > 0 && data.courseTitle.size() <= 240 &&
+             (!('courseCategory' in data) || (data.courseCategory is string && data.courseCategory.size() <= 120)) &&
+             (!('answers' in data) || data.answers is map) &&
+             data.status in ['PENDING', 'DEPARTMENT_VERIFIED', 'MD_VERIFIED', 'APPROVED', 'RETURNED', 'REJECTED'] &&
+             data.departmentVerificationStatus in ['PENDING', 'VERIFIED', 'RETURNED', 'REJECTED'] &&
+             (!('departmentVerifiedBy' in data) || (data.departmentVerifiedBy is string && data.departmentVerifiedBy.size() <= 150)) &&
+             (!('departmentVerifiedRole' in data) || (data.departmentVerifiedRole is string && data.departmentVerifiedRole.size() <= 64)) &&
+             (!('departmentVerifiedAt' in data) || (data.departmentVerifiedAt is string && data.departmentVerifiedAt.size() <= 64)) &&
+             (!('departmentRemarks' in data) || (data.departmentRemarks is string && data.departmentRemarks.size() <= 1000)) &&
+             data.mdVerificationStatus in ['PENDING_MD', 'VERIFIED', 'REJECTED'] &&
+             (!('mdVerifiedBy' in data) || (data.mdVerifiedBy is string && data.mdVerifiedBy.size() <= 150)) &&
+             (!('mdVerifiedAt' in data) || (data.mdVerifiedAt is string && data.mdVerifiedAt.size() <= 64)) &&
+             (!('mdRemarks' in data) || (data.mdRemarks is string && data.mdRemarks.size() <= 1000)) &&
+             (!('captchaVerifiedAt' in data) || (data.captchaVerifiedAt is string && data.captchaVerifiedAt.size() <= 64)) &&
+             (!('timestamp' in data) || (data.timestamp is string && data.timestamp.size() <= 64)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64) || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
 
     function isValidExamSession(data) {
@@ -237,6 +308,8 @@ service cloud.firestore {
                'admissionsEyebrow', 'admissionsTitle', 'admissionsSubtitle',
                'footerBrandTitle', 'footerDescription', 'contactEmail', 'contactPhone', 'contactLocation', 'copyrightText',
                'showReviewsSection', 'showBlogSection', 'showAdmissionsSection',
+               'showMediaShowcaseSection', 'mediaSectionEyebrow', 'mediaSectionTitle', 'mediaSectionSubtitle',
+               'featuredVideoTitle', 'featuredVideoCaption', 'featuredVideoUrl', 'featuredVideoPosterUrl', 'posters',
                'updatedAt', 'updatedBy'
              ]) &&
              data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
@@ -284,6 +357,15 @@ service cloud.firestore {
              (!('showReviewsSection' in data) || data.showReviewsSection is bool) &&
              (!('showBlogSection' in data) || data.showBlogSection is bool) &&
              (!('showAdmissionsSection' in data) || data.showAdmissionsSection is bool) &&
+             (!('showMediaShowcaseSection' in data) || data.showMediaShowcaseSection is bool) &&
+             (!('mediaSectionEyebrow' in data) || (data.mediaSectionEyebrow is string && data.mediaSectionEyebrow.size() <= 120)) &&
+             (!('mediaSectionTitle' in data) || (data.mediaSectionTitle is string && data.mediaSectionTitle.size() <= 200)) &&
+             (!('mediaSectionSubtitle' in data) || (data.mediaSectionSubtitle is string && data.mediaSectionSubtitle.size() <= 600)) &&
+             (!('featuredVideoTitle' in data) || (data.featuredVideoTitle is string && data.featuredVideoTitle.size() <= 200)) &&
+             (!('featuredVideoCaption' in data) || (data.featuredVideoCaption is string && data.featuredVideoCaption.size() <= 600)) &&
+             (!('featuredVideoUrl' in data) || (data.featuredVideoUrl is string && data.featuredVideoUrl.size() <= 600000)) &&
+             (!('featuredVideoPosterUrl' in data) || (data.featuredVideoPosterUrl is string && data.featuredVideoPosterUrl.size() <= 250000)) &&
+             (!('posters' in data) || (data.posters is list && data.posters.size() <= 6)) &&
              data.updatedAt is string && data.updatedAt.size() <= 64 &&
              (!('updatedBy' in data) || (data.updatedBy is string && data.updatedBy.size() <= 150));
     }
@@ -297,10 +379,12 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create: if isOwner(userId) && isValidUser(incoming());
-      allow update: if (isOwner(userId) || isAdmin()) && isValidUser(incoming()) && (
-        // Prevent role escalation by self
-        (isOwner(userId) && incoming().role == existing().role) || isAdmin()
+      allow create: if isValidId(userId) && (isOwner(userId) || isAdmin()) && isValidUser(incoming()) && (
+        isAdmin() || (incoming().id == request.auth.uid && incoming().role == 'STUDENT')
+      );
+      allow update: if isValidId(userId) && (isOwner(userId) || isAdmin()) && isValidUser(incoming()) && (
+        // Prevent role/id escalation by self
+        (isOwner(userId) && incoming().role == existing().role && incoming().id == existing().id) || isAdmin()
       );
     }
 
@@ -329,9 +413,25 @@ service cloud.firestore {
     }
 
     match /registrations/{id} {
-      allow read: if isAdmin() || (isSignedIn() && existing().studentId == request.auth.uid);
-      allow create: if isSignedIn();
-      allow update: if isAdmin();
+      allow get: if isSignedIn() && isValidId(id) && (isDepartmentStaff() || resource.data.userId == request.auth.uid || resource.data.studentId == request.auth.uid);
+      allow list: if isSignedIn() && (isDepartmentStaff() || resource.data.userId == request.auth.uid || resource.data.studentId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(id) && isValidRegistration(incoming()) && (
+        isAdmin() ||
+        (incoming().userId == request.auth.uid && incoming().status == 'PENDING' && incoming().departmentVerificationStatus == 'PENDING' && incoming().mdVerificationStatus == 'PENDING_MD')
+      );
+      allow update: if isSignedIn() && isValidId(id) && isValidRegistration(incoming()) && (
+        isAdmin() ||
+        (isDepartmentStaff() &&
+          incoming().userId == existing().userId &&
+          incoming().studentId == existing().studentId &&
+          incoming().courseId == existing().courseId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().mdVerificationStatus == existing().mdVerificationStatus &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'departmentVerificationStatus', 'departmentVerifiedBy', 'departmentVerifiedRole', 'departmentVerifiedAt', 'departmentRemarks', 'updatedAt']) &&
+          incoming().departmentVerificationStatus in ['PENDING', 'VERIFIED', 'RETURNED', 'REJECTED'] &&
+          incoming().status in ['PENDING', 'DEPARTMENT_VERIFIED', 'RETURNED', 'REJECTED'])
+      );
+      allow delete: if isAdmin() && isValidId(id);
     }
 
     match /library_posts/{id} {
@@ -410,14 +510,11 @@ service cloud.firestore {
     }
 
     match /exam_announcements/{announcementId} {
-      allow get: if isValidId(announcementId) && ((resource.data.active == true && resource.data.approvalStatus == 'OFFICIAL') || isInstructorOrAdmin() || isOwner(resource.data.createdById));
-      allow list: if (resource.data.active == true && resource.data.approvalStatus == 'OFFICIAL') || isInstructorOrAdmin() || (isSignedIn() && resource.data.createdById == request.auth.uid);
-      allow create: if isSignedIn() && isValidId(announcementId) && isValidExamAnnouncement(incoming()) && isInstructorOrAdmin() && incoming().createdById == request.auth.uid && (isAdmin() || incoming().approvalStatus == 'PENDING_MD');
-      allow update: if isSignedIn() && isValidId(announcementId) && isValidExamAnnouncement(incoming()) && (
-        isAdmin() ||
-        (isInstructorOrAdmin() && existing().createdById == request.auth.uid && incoming().createdById == existing().createdById && incoming().createdAt == existing().createdAt && incoming().approvalStatus == 'PENDING_MD')
-      );
-      allow delete: if isSignedIn() && isValidId(announcementId) && (isAdmin() || (isInstructorOrAdmin() && existing().createdById == request.auth.uid));
+      allow get: if isValidId(announcementId) && isMdOrPrincipal();
+      allow list: if isMdOrPrincipal();
+      allow create: if isValidId(announcementId) && isMdOrPrincipal() && isValidExamAnnouncement(incoming()) && incoming().createdById == request.auth.uid;
+      allow update: if isValidId(announcementId) && isMdOrPrincipal() && isValidExamAnnouncement(incoming()) && incoming().createdById == existing().createdById && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(announcementId) && isMdOrPrincipal();
     }
 
     match /site_settings/{settingId} {

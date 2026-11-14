@@ -43,16 +43,12 @@ export default function ExamAnnouncementsPortal({
   onNavigateTab,
   onRefreshAllData,
 }: ExamAnnouncementsPortalProps) {
-  const { user: firebaseUser, isAdmin: firebaseIsAdmin } = useAuth();
+  const { user: firebaseUser } = useAuth();
   const courses = useMemo(() => SwanayaDatabase.get<Course[]>('courses') || [], []);
 
-  const isMdOrAdmin =
-    firebaseIsAdmin ||
-    ['SUPER_ADMIN', 'MD', 'ADMIN', 'ACADEMIC_ADMIN'].includes(currentUser.role);
-  const isPublisher =
-    isMdOrAdmin || ['INSTRUCTOR', 'REVIEWER'].includes(currentUser.role);
-  const isStudentOrAlumni =
-    currentUser.role === 'STUDENT' || currentUser.role === 'ALUMNI';
+  const isMdOrAdmin = ['MD', 'PRINCIPAL', 'SUPER_ADMIN'].includes(currentUser.role);
+  const isPublisher = isMdOrAdmin;
+  const isStudentOrAlumni = false;
 
   const [announcements, setAnnouncements] = useState<ExamAnnouncement[]>(() => {
     const local = SwanayaDatabase.get<ExamAnnouncement[]>('examAnnouncements');
@@ -98,7 +94,7 @@ export default function ExamAnnouncementsPortal({
     active: true,
   });
 
-  const canQueryAllInCloud = Boolean(firebaseUser && auth.currentUser && (isPublisher || firebaseIsAdmin));
+  const canQueryAllInCloud = Boolean(firebaseUser && auth.currentUser && isMdOrAdmin);
 
   const syncAnnouncements = async () => {
     setLoading(true);
@@ -106,7 +102,7 @@ export default function ExamAnnouncementsPortal({
       const localList = SwanayaDatabase.get<ExamAnnouncement[]>('examAnnouncements') || [];
       let cloudList: ExamAnnouncement[] = [];
       try {
-        const fetched = await academyService.getExamAnnouncements(!canQueryAllInCloud);
+        const fetched = await academyService.getExamAnnouncements(false);
         if (Array.isArray(fetched)) {
           cloudList = fetched as ExamAnnouncement[];
         }
@@ -197,16 +193,28 @@ export default function ExamAnnouncementsPortal({
 
   const broadcastNotification = (ann: ExamAnnouncement) => {
     const existingNotifs = SwanayaDatabase.get<Notification[]>('notifications') || [];
-    const newNotif: Notification = {
-      id: `not-exam-ann-${Date.now()}`,
-      userId: 'ALL',
-      title: ann.urgent ? `Urgent Exam Notice: ${ann.title}` : `Exam Announced: ${ann.title}`,
-      message: `${ann.subjectCode ? `${ann.subjectCode} · ` : ''}Scheduled for ${ann.examDate || ann.date}${ann.venue ? ` at ${ann.venue}` : ''}.`,
+    const createdAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const title = ann.urgent ? `Urgent Announced Exam: ${ann.title}` : `Announced Examination: ${ann.title}`;
+    const message = `${ann.subjectCode ? `${ann.subjectCode} · ` : ''}Scheduled for ${ann.examDate || ann.date}${ann.venue ? ` at ${ann.venue}` : ''}.`;
+    const mdNotif: Notification = {
+      id: `not-exam-ann-md-${Date.now()}`,
+      userId: 'usr-md',
+      title,
+      message,
       type: ann.urgent ? 'WARNING' : 'INFO',
       read: false,
-      createdAt: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      createdAt,
     };
-    SwanayaDatabase.set('notifications', [newNotif, ...existingNotifs]);
+    const principalNotif: Notification = {
+      id: `not-exam-ann-principal-${Date.now() + 1}`,
+      userId: 'usr-principal',
+      title,
+      message,
+      type: ann.urgent ? 'WARNING' : 'INFO',
+      read: false,
+      createdAt,
+    };
+    SwanayaDatabase.set('notifications', [mdNotif, principalNotif, ...existingNotifs]);
   };
 
   const handleSaveAnnouncement = async (e: React.FormEvent) => {
@@ -333,8 +341,8 @@ export default function ExamAnnouncementsPortal({
           type: 'success',
           text:
             approvalStatus === 'OFFICIAL'
-              ? `Official examination announcement "${trimmedTitle}" published and broadcast to students.`
-              : `Announcement "${trimmedTitle}" drafted and queued for Managing Director verification.`,
+              ? `Announced examination "${trimmedTitle}" saved for MD & Principal.`
+              : `Announced examination "${trimmedTitle}" saved and queued for MD verification.`,
         });
       }
 
@@ -377,7 +385,7 @@ export default function ExamAnnouncementsPortal({
       'MD_VERIFY_EXAM_ANNOUNCEMENT',
       `Verified & broadcast exam notice: ${ann.title}`
     );
-    setNotice({ type: 'success', text: `"${ann.title}" verified by MD and broadcast to portals.` });
+    setNotice({ type: 'success', text: `"${ann.title}" verified in the Announced Examination ledger.` });
     onRefreshAllData?.();
   };
 
@@ -489,6 +497,20 @@ export default function ExamAnnouncementsPortal({
     };
   }, [announcements]);
 
+  if (!isMdOrAdmin) {
+    return (
+      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-8 text-center space-y-2">
+        <ShieldCheck className="w-8 h-8 text-amber-400 mx-auto" />
+        <h3 className="text-base font-serif font-bold text-white">
+          Announced Examination · Restricted Access
+        </h3>
+        <p className="text-xs text-slate-400 max-w-md mx-auto">
+          Announced Examination schedules and executive circulars are visible exclusively to the Managing Director (MD) and Academy Principal.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -496,17 +518,13 @@ export default function ExamAnnouncementsPortal({
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-amber-400 font-mono text-xs font-semibold uppercase tracking-wider">
             <Megaphone className="w-4 h-4 text-amber-400" />
-            <span>Swanaya Examination Board · Official Circulars</span>
+            <span>MD &amp; Principal Examination Board · Executive Ledger</span>
           </div>
           <h2 className="text-xl font-serif font-bold text-white">
-            Examination Announcements &amp; Schedule Board
+            Announced Examination
           </h2>
           <p className="text-xs text-slate-400 max-w-2xl">
-            {isMdOrAdmin
-              ? 'Publish official examination circulars, approve faculty schedule notices, and broadcast urgent timetable updates across all student and parent portals.'
-              : isPublisher
-              ? 'Draft and submit examination timetable announcements for Managing Director verification and broadcast.'
-              : 'Stay updated with official examination dates, venues, submission deadlines, and priority academy circulars.'}
+            Executive register of announced examinations, official schedules, venues, and circulars restricted exclusively to the Managing Director and Principal.
           </p>
         </div>
 
@@ -517,7 +535,7 @@ export default function ExamAnnouncementsPortal({
             className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs uppercase tracking-wider rounded-lg shadow-lg shadow-amber-500/10 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span>Announce Examination</span>
+            <span>Add Announced Examination</span>
           </button>
         )}
       </div>
@@ -643,12 +661,10 @@ export default function ExamAnnouncementsPortal({
           <Megaphone className="w-10 h-10 text-slate-600 mx-auto" />
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-slate-200">
-              No Examination Announcements Match This View
+              No Announced Examinations Match This View
             </h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto">
-              {isPublisher
-                ? 'Announce an upcoming examination timetable, MCQ assessment date, or answerbook upload deadline to notify candidates immediately.'
-                : 'Official examination circulars and timetable updates published by the Swanaya Examination Board will appear here.'}
+              Record and review upcoming announced examination dates, schedules, and executive circulars for MD &amp; Principal oversight.
             </p>
           </div>
           {isPublisher && (
@@ -657,7 +673,7 @@ export default function ExamAnnouncementsPortal({
               onClick={openCreateModal}
               className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded-md cursor-pointer"
             >
-              Announce First Examination
+              Add Announced Examination
             </button>
           )}
         </div>
@@ -937,7 +953,7 @@ export default function ExamAnnouncementsPortal({
               <div className="flex items-center gap-2">
                 <Megaphone className="w-5 h-5 text-amber-400" />
                 <h3 className="text-base font-serif font-bold text-white">
-                  {editingId ? 'Edit Examination Announcement' : 'Announce New Examination'}
+                  {editingId ? 'Edit Announced Examination' : 'Add Announced Examination'}
                 </h3>
               </div>
               <button
@@ -1181,15 +1197,9 @@ export default function ExamAnnouncementsPortal({
                     onChange={(e) => setForm({ ...form, active: e.target.checked })}
                     className="accent-amber-500 cursor-pointer"
                   />
-                  <span>Display Actively on Student &amp; Parent Portals</span>
+                  <span>Active Announced Examination Record</span>
                 </label>
               </div>
-
-              {!isMdOrAdmin && (
-                <p className="text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-                  Instructor-drafted examination announcements require Managing Director verification before broadcasting to students.
-                </p>
-              )}
 
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-3">
                 <button
@@ -1210,12 +1220,10 @@ export default function ExamAnnouncementsPortal({
                   <Send className="w-3.5 h-3.5" />
                   <span>
                     {saving
-                      ? 'Publishing...'
+                      ? 'Saving...'
                       : editingId
                       ? 'Save Changes'
-                      : isMdOrAdmin
-                      ? 'Publish Official Announcement'
-                      : 'Submit for MD Verification'}
+                      : 'Save Announced Examination'}
                   </span>
                 </button>
               </div>

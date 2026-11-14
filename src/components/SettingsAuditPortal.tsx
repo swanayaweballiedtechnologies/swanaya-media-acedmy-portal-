@@ -21,18 +21,25 @@ import {
   FileText,
   AlertCircle,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Film
 } from 'lucide-react';
 import {
   SwanayaDatabase,
   AcademySettings,
   AuditLog,
   FrontPageConfig,
+  FrontPagePosterItem,
   INITIAL_FRONT_PAGE_CONFIG
 } from '../db/mockDb';
 import { academyService } from '../services/academyService';
 import { auth } from '../firebase';
 import { applyDocumentFavicon, processLogoUploadFile } from '../utils/favicon';
+import {
+  parseFrontPageVideoUrl,
+  processPosterUploadFile,
+  readSmallVideoFileAsDataUrl
+} from '../utils/mediaHelpers';
 
 interface SettingsAuditPortalProps {
   currentUser: any;
@@ -54,6 +61,10 @@ function mergeFrontPageConfig(partial?: Partial<FrontPageConfig> | null): FrontP
       Array.isArray(safe.philosophyPillars) && safe.philosophyPillars.length > 0
         ? safe.philosophyPillars.slice(0, 4)
         : INITIAL_FRONT_PAGE_CONFIG.philosophyPillars,
+    posters:
+      Array.isArray(safe.posters)
+        ? safe.posters.slice(0, 6)
+        : INITIAL_FRONT_PAGE_CONFIG.posters,
     showReviewsSection:
       typeof safe.showReviewsSection === 'boolean'
         ? safe.showReviewsSection
@@ -66,6 +77,10 @@ function mergeFrontPageConfig(partial?: Partial<FrontPageConfig> | null): FrontP
       typeof safe.showAdmissionsSection === 'boolean'
         ? safe.showAdmissionsSection
         : INITIAL_FRONT_PAGE_CONFIG.showAdmissionsSection,
+    showMediaShowcaseSection:
+      typeof safe.showMediaShowcaseSection === 'boolean'
+        ? safe.showMediaShowcaseSection
+        : INITIAL_FRONT_PAGE_CONFIG.showMediaShowcaseSection,
   };
 }
 
@@ -92,6 +107,8 @@ export default function SettingsAuditPortal({
   const [frontPageNotice, setFrontPageNotice] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
   const [confirmFrontReset, setConfirmFrontReset] = useState(false);
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
+  const [mediaUploadError, setMediaUploadError] = useState<string | null>(null);
+  const [uploadingMediaItem, setUploadingMediaItem] = useState(false);
 
   useEffect(() => {
     if (initialTab) {
@@ -167,6 +184,9 @@ export default function SettingsAuditPortal({
         .filter((item) => item.title.trim().length > 0)
         .slice(0, 4),
       philosophyPillars: frontPageForm.philosophyPillars.slice(0, 4),
+      posters: (frontPageForm.posters || [])
+        .filter((p) => p.imageUrl.trim().length > 0 || p.title.trim().length > 0)
+        .slice(0, 6),
       updatedAt: new Date().toISOString(),
       updatedBy: currentUser?.name || currentUser?.email || 'MD / Admin',
     };
@@ -269,6 +289,33 @@ export default function SettingsAuditPortal({
     const next = [...frontPageForm.philosophyPillars];
     next[index] = { ...next[index], [field]: value };
     setFrontPageForm({ ...frontPageForm, philosophyPillars: next });
+  };
+
+  const addPosterItem = () => {
+    const current = frontPageForm.posters || [];
+    if (current.length >= 6) return;
+    const newPoster: FrontPagePosterItem = {
+      id: `poster-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: 'New Academy Poster',
+      caption: 'Upcoming admissions & studio masterclass details.',
+      imageUrl: '',
+      ctaLabel: 'Apply Now',
+      ctaUrl: '#admissions',
+    };
+    setFrontPageForm({ ...frontPageForm, posters: [...current, newPoster] });
+  };
+
+  const updatePosterItem = (index: number, patch: Partial<FrontPagePosterItem>) => {
+    const next = [...(frontPageForm.posters || [])];
+    next[index] = { ...next[index], ...patch };
+    setFrontPageForm({ ...frontPageForm, posters: next });
+  };
+
+  const removePosterItem = (index: number) => {
+    setFrontPageForm({
+      ...frontPageForm,
+      posters: (frontPageForm.posters || []).filter((_, idx) => idx !== index),
+    });
   };
 
   return (
@@ -420,7 +467,20 @@ export default function SettingsAuditPortal({
             <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono border-b border-slate-800 pb-2">
               Section Visibility Controls
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              <label className="flex items-center justify-between gap-3 bg-slate-950 border border-slate-800 rounded-lg p-3.5 cursor-pointer">
+                <div>
+                  <p className="text-xs font-semibold text-slate-200">Posters &amp; Video</p>
+                  <p className="text-[11px] text-slate-500">Show front page posters &amp; video showcase</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={frontPageForm.showMediaShowcaseSection}
+                  onChange={(e) => setFrontPageForm({ ...frontPageForm, showMediaShowcaseSection: e.target.checked })}
+                  className="h-4 w-4 accent-amber-500 cursor-pointer"
+                />
+              </label>
+
               <label className="flex items-center justify-between gap-3 bg-slate-950 border border-slate-800 rounded-lg p-3.5 cursor-pointer">
                 <div>
                   <p className="text-xs font-semibold text-slate-200">Reviews & Ratings</p>
@@ -823,6 +883,349 @@ export default function SettingsAuditPortal({
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Promotional Posters & Featured Video Editor */}
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                  <Film className="w-4 h-4 text-amber-400" />
+                  Posters &amp; Featured Video Showcase
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Upload promotional event posters and link or upload a featured academy video for the public front page.
+                </p>
+              </div>
+              {(frontPageForm.posters || []).length < 6 && (
+                <button
+                  type="button"
+                  onClick={addPosterItem}
+                  className="px-3.5 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold uppercase tracking-wider rounded flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Poster ({(frontPageForm.posters || []).length}/6)
+                </button>
+              )}
+            </div>
+
+            {mediaUploadError && (
+              <div className="flex items-center gap-2 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded px-3 py-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{mediaUploadError}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 uppercase font-bold">Showcase Eyebrow</label>
+                <input
+                  type="text"
+                  maxLength={120}
+                  value={frontPageForm.mediaSectionEyebrow || ''}
+                  onChange={(e) => setFrontPageForm({ ...frontPageForm, mediaSectionEyebrow: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-amber-300"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 uppercase font-bold">Showcase Title</label>
+                <input
+                  type="text"
+                  maxLength={200}
+                  value={frontPageForm.mediaSectionTitle || ''}
+                  onChange={(e) => setFrontPageForm({ ...frontPageForm, mediaSectionTitle: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white font-serif"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 uppercase font-bold">Showcase Subtitle</label>
+                <input
+                  type="text"
+                  maxLength={600}
+                  value={frontPageForm.mediaSectionSubtitle || ''}
+                  onChange={(e) => setFrontPageForm({ ...frontPageForm, mediaSectionSubtitle: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-300"
+                />
+              </div>
+            </div>
+
+            {/* Featured Video Block */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 bg-slate-950/70 border border-slate-800 rounded-xl p-4">
+              <div className="lg:col-span-7 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">Featured Front Page Video</p>
+                  {frontPageForm.featuredVideoUrl && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFrontPageForm({
+                          ...frontPageForm,
+                          featuredVideoUrl: '',
+                          featuredVideoPosterUrl: '',
+                        })
+                      }
+                      className="text-[10px] text-rose-400 hover:underline cursor-pointer"
+                    >
+                      Remove Video
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-bold">Video Title</label>
+                    <input
+                      type="text"
+                      maxLength={200}
+                      value={frontPageForm.featuredVideoTitle || ''}
+                      onChange={(e) => setFrontPageForm({ ...frontPageForm, featuredVideoTitle: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-100"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-bold">Video Link (YouTube, Vimeo or MP4)</label>
+                    <input
+                      type="text"
+                      maxLength={600000}
+                      value={frontPageForm.featuredVideoUrl || ''}
+                      onChange={(e) => {
+                        setFrontPageForm({ ...frontPageForm, featuredVideoUrl: e.target.value });
+                        setMediaUploadError(null);
+                      }}
+                      placeholder="https://youtube.com/watch?v=... or MP4 URL"
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-400 uppercase font-bold">Video Caption / Description</label>
+                  <input
+                    type="text"
+                    maxLength={600}
+                    value={frontPageForm.featuredVideoCaption || ''}
+                    onChange={(e) => setFrontPageForm({ ...frontPageForm, featuredVideoCaption: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded px-3 py-2 text-xs text-slate-300"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-[11px] font-semibold text-slate-200 cursor-pointer transition-colors">
+                    <Upload className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{uploadingMediaItem ? 'Processing...' : 'Upload Video File'}</span>
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime"
+                      className="sr-only"
+                      disabled={uploadingMediaItem}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        setMediaUploadError(null);
+                        setUploadingMediaItem(true);
+                        try {
+                          if (file.size > 420 * 1024 && auth.currentUser) {
+                            const uploaded = await academyService.uploadMedia(
+                              file,
+                              'VIDEO',
+                              currentUser?.id || auth.currentUser.uid
+                            );
+                            if (uploaded?.url) {
+                              setFrontPageForm((prev) => ({ ...prev, featuredVideoUrl: uploaded.url }));
+                              return;
+                            }
+                          }
+                          const dataUrl = await readSmallVideoFileAsDataUrl(file);
+                          setFrontPageForm((prev) => ({ ...prev, featuredVideoUrl: dataUrl }));
+                        } catch (err: any) {
+                          setMediaUploadError(err?.message || 'Unable to load video file.');
+                        } finally {
+                          setUploadingMediaItem(false);
+                        }
+                      }}
+                    />
+                  </label>
+
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-[11px] font-semibold text-slate-200 cursor-pointer transition-colors">
+                    <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Upload Video Thumbnail</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      className="sr-only"
+                      disabled={uploadingMediaItem}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        setMediaUploadError(null);
+                        try {
+                          const dataUrl = await processPosterUploadFile(file);
+                          setFrontPageForm((prev) => ({ ...prev, featuredVideoPosterUrl: dataUrl }));
+                        } catch (err: any) {
+                          setMediaUploadError(err?.message || 'Unable to process thumbnail.');
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Live Video Preview */}
+              <div className="lg:col-span-5">
+                <div className="aspect-video rounded-lg border border-slate-800 bg-slate-900 overflow-hidden flex items-center justify-center">
+                  {(() => {
+                    const parsedVideo = parseFrontPageVideoUrl(frontPageForm.featuredVideoUrl);
+                    if (!parsedVideo) {
+                      return (
+                        <div className="text-center p-4 space-y-1.5">
+                          <Film className="w-7 h-7 text-slate-600 mx-auto" />
+                          <p className="text-xs text-slate-400 font-medium">No featured video linked yet</p>
+                          <p className="text-[11px] text-slate-600">Paste a YouTube / Vimeo link or upload a clip</p>
+                        </div>
+                      );
+                    }
+                    if (parsedVideo.kind === 'youtube' || parsedVideo.kind === 'vimeo') {
+                      return (
+                        <iframe
+                          src={parsedVideo.src}
+                          title={frontPageForm.featuredVideoTitle || 'Featured Academy Video'}
+                          className="w-full h-full"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      );
+                    }
+                    return (
+                      <video
+                        src={parsedVideo.src}
+                        poster={frontPageForm.featuredVideoPosterUrl || undefined}
+                        controls
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            {/* Posters Grid Editor */}
+            {(frontPageForm.posters || []).length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {(frontPageForm.posters || []).map((poster, idx) => (
+                  <div key={poster.id || idx} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-amber-400 font-bold uppercase">
+                        Poster #{idx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removePosterItem(idx)}
+                        className="text-[11px] text-rose-400 hover:text-rose-300 cursor-pointer flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" /> Remove
+                      </button>
+                    </div>
+
+                    <div className="aspect-[4/3] rounded-lg bg-slate-900 border border-slate-800 overflow-hidden flex items-center justify-center">
+                      {poster.imageUrl ? (
+                        <img
+                          src={poster.imageUrl}
+                          alt={poster.title || `Poster ${idx + 1}`}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="text-center p-4 space-y-1">
+                          <ImageIcon className="w-6 h-6 text-slate-600 mx-auto" />
+                          <p className="text-[11px] text-slate-500">Upload image or paste URL below</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <label className="inline-flex items-center justify-center gap-1.5 w-full px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-[11px] font-semibold text-slate-200 cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Upload Poster Image</span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        className="sr-only"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (!file) return;
+                          setMediaUploadError(null);
+                          try {
+                            const dataUrl = await processPosterUploadFile(file);
+                            updatePosterItem(idx, { imageUrl: dataUrl });
+                          } catch (err: any) {
+                            setMediaUploadError(err?.message || 'Unable to process poster image.');
+                          }
+                        }}
+                      />
+                    </label>
+
+                    <input
+                      type="text"
+                      placeholder="Or paste poster image URL"
+                      maxLength={250000}
+                      value={poster.imageUrl}
+                      onChange={(e) => updatePosterItem(idx, { imageUrl: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 font-mono"
+                    />
+
+                    <input
+                      type="text"
+                      placeholder="Poster Headline"
+                      maxLength={140}
+                      value={poster.title}
+                      onChange={(e) => updatePosterItem(idx, { title: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-white font-semibold"
+                    />
+
+                    <textarea
+                      rows={2}
+                      placeholder="Short caption or event date..."
+                      maxLength={300}
+                      value={poster.caption}
+                      onChange={(e) => updatePosterItem(idx, { caption: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-300"
+                    />
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        placeholder="Button text (optional)"
+                        maxLength={40}
+                        value={poster.ctaLabel || ''}
+                        onChange={(e) => updatePosterItem(idx, { ctaLabel: e.target.value })}
+                        className="bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-amber-300"
+                      />
+                      <input
+                        type="text"
+                        placeholder="#admissions or URL"
+                        maxLength={300}
+                        value={poster.ctaUrl || ''}
+                        onChange={(e) => updatePosterItem(idx, { ctaUrl: e.target.value })}
+                        className="bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-300 font-mono"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-6 text-center bg-slate-950/60 border border-dashed border-slate-800 rounded-lg space-y-2">
+                <p className="text-xs text-slate-400">No promotional posters added yet.</p>
+                <button
+                  type="button"
+                  onClick={addPosterItem}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add First Poster
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 3. Section Headings (Programs, Reviews, Blog, Admissions) */}

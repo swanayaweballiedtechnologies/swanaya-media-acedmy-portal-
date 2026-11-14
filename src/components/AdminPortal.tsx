@@ -16,7 +16,7 @@ import InstructorAllocation from './InstructorAllocation';
 import { academyService } from '../services/academyService';
 
 interface AdminPortalProps {
-  activeRole: 'SUPER_ADMIN' | 'ADMIN' | 'ACADEMIC_ADMIN' | 'MD' | 'REVIEWER';
+  activeRole: 'SUPER_ADMIN' | 'ADMIN' | 'ACADEMIC_ADMIN' | 'MD' | 'PRINCIPAL' | 'REVIEWER';
   currentUser: User;
   onRefreshAllData: () => void;
   onOpenProfile?: (target: { type: 'STUDENT' | 'INSTRUCTOR' | 'USER'; id: string }) => void;
@@ -599,13 +599,24 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
               <p className="text-[11px] text-slate-400">Manage student registrations, review incoming proposals, and register new scholars directly into the database.</p>
             </div>
 
-            <button
-              onClick={() => handleOpenStudentModal(null)}
-              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1.5 shadow-md shadow-amber-500/10"
-            >
-              <Plus className="w-4 h-4" />
-              New Registration
-            </button>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('course-verification')}
+                  className="px-3.5 py-2.5 bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-300 text-xs font-semibold rounded cursor-pointer transition-colors whitespace-nowrap"
+                >
+                  MD &amp; Dept Course Verification →
+                </button>
+              )}
+              <button
+                onClick={() => handleOpenStudentModal(null)}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1.5 shadow-md shadow-amber-500/10 whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" />
+                New Registration
+              </button>
+            </div>
           </div>
 
           {/* Pending Applications / Registrations list */}

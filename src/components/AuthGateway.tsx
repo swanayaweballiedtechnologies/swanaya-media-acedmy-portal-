@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Shield, User as UserIcon, Lock, ArrowLeft, ArrowRight, 
   Mail, Phone, UserPlus, CheckCircle2, RefreshCw, KeyRound, AlertCircle, Sparkles, Eye, EyeOff,
@@ -48,10 +48,19 @@ const ACADEMY_GALLERY = [
 interface AuthGatewayProps {
   onLoginSuccess: (user: User) => void;
   onBack: () => void;
+  initialCourseId?: string;
+  initialAuthMode?: 'signin' | 'register';
+  onOpenCourseSelection?: (currentCourseId?: string) => void;
 }
 
-export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps) {
-  const [authMode, setAuthMode] = useState<'signin' | 'register' | 'verify'>('signin');
+export default function AuthGateway({
+  onLoginSuccess,
+  onBack,
+  initialCourseId,
+  initialAuthMode,
+  onOpenCourseSelection
+}: AuthGatewayProps) {
+  const [authMode, setAuthMode] = useState<'signin' | 'register' | 'verify'>(initialAuthMode || 'signin');
   
   // Show password visibility toggles
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -64,8 +73,8 @@ export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Dynamic Database state
-  const coursesList = SwanayaDatabase.get<Course[]>("courses");
+  // Dynamic Database state (merge local DB + Firestore courses)
+  const [coursesList, setCoursesList] = useState<Course[]>(() => SwanayaDatabase.get<Course[]>("courses") || []);
   const academySettings = SwanayaDatabase.get<any>("settings") || {};
   const adminWhatsAppPhone = academySettings.adminWhatsAppPhone || "+91 94460 12345";
   const cleanAdminPhone = adminWhatsAppPhone.replace(/[^\d+]/g, '').replace(/^\+/, '');
@@ -75,7 +84,65 @@ export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps
   const [regUsername, setRegUsername] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPhone, setRegPhone] = useState('');
-  const [regCourseId, setRegCourseId] = useState(coursesList[0]?.id || '');
+  const [regCourseId, setRegCourseId] = useState(initialCourseId || coursesList[0]?.id || '');
+
+  useEffect(() => {
+    if (initialAuthMode) {
+      setAuthMode(initialAuthMode);
+    }
+  }, [initialAuthMode]);
+
+  useEffect(() => {
+    if (initialCourseId) {
+      setRegCourseId(initialCourseId);
+    }
+  }, [initialCourseId]);
+
+  useEffect(() => {
+    let mounted = true;
+    const syncCourses = async () => {
+      const local = SwanayaDatabase.get<Course[]>('courses') || [];
+      let cloud: any[] = [];
+      try {
+        const fetched = await academyService.getCourses();
+        if (Array.isArray(fetched)) cloud = fetched;
+      } catch {
+        // Keep local store on offline/permission fallback
+      }
+      if (!mounted) return;
+      const mergedMap = new Map<string, Course>();
+      local.forEach((c) => c?.id && mergedMap.set(c.id, c));
+      cloud.forEach((raw: any) => {
+        if (raw?.id && !mergedMap.has(raw.id)) {
+          mergedMap.set(raw.id, {
+            id: raw.id,
+            code: raw.code || raw.id.slice(0, 8).toUpperCase(),
+            name: raw.name || raw.title || 'Academy Course',
+            description: raw.description || '',
+            duration: raw.duration || '6 Months',
+            level: raw.level || 'DIPLOMA',
+            eligibility: raw.eligibility || '',
+            fee: Number(raw.fee ?? raw.fees ?? 0),
+            mode: raw.mode || 'HYBRID',
+            status: raw.status || 'ACTIVE',
+            thumbnailUrl: raw.thumbnailUrl || '',
+            coordinator: raw.coordinator || 'Academic Director',
+            learningObjectives: Array.isArray(raw.learningObjectives) ? raw.learningObjectives : [],
+            careerOutcomes: Array.isArray(raw.careerOutcomes) ? raw.careerOutcomes : [],
+          });
+        }
+      });
+      const active = Array.from(mergedMap.values()).filter((c) => c.status !== 'ARCHIVED');
+      setCoursesList(active);
+      if (active.length > 0) {
+        setRegCourseId((prev) => prev || initialCourseId || active[0].id);
+      }
+    };
+    syncCourses();
+    return () => {
+      mounted = false;
+    };
+  }, [initialCourseId]);
   const [regWhatsappPhone, setRegWhatsappPhone] = useState('');
   const [regWhatsappOptIn, setRegWhatsappOptIn] = useState(true);
   const [regRole, setRegRole] = useState<UserRole>('STUDENT');
@@ -711,11 +778,22 @@ export default function AuthGateway({ onLoginSuccess, onBack }: AuthGatewayProps
               </div>
 
               {/* COURSE SELECTION INTEGRATION */}
-              <div className="space-y-2 bg-slate-950/60 p-3.5 border border-slate-800 rounded-lg">
-                <label className="text-[10px] text-amber-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-                  Select Enrolled / Preferred Course *
-                </label>
+              <div className="space-y-2.5 bg-slate-950/60 p-3.5 border border-slate-800 rounded-lg">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-[10px] text-amber-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                    Select Enrolled / Preferred Course *
+                  </label>
+                  {onOpenCourseSelection && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenCourseSelection(regCourseId)}
+                      className="text-[10px] font-semibold text-amber-400 hover:text-amber-300 underline underline-offset-2 cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      Open Course Selection Page →
+                    </button>
+                  )}
+                </div>
                 
                 {coursesList.length === 0 ? (
                   <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded text-amber-300 text-xs space-y-2">

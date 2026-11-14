@@ -19,6 +19,7 @@ export default function RoleSwitcher({ users, activeUser, onSelectUser }: RoleSw
   const getRoleBadgeColor = (role: UserRole) => {
     switch (role) {
       case 'MD': return 'text-purple-300 border-purple-500/30 bg-purple-500/10';
+      case 'PRINCIPAL': return 'text-sky-300 border-sky-500/30 bg-sky-500/10';
       case 'SUPER_ADMIN': return 'text-rose-400 border-rose-500/20 bg-rose-500/5';
       case 'ADMIN': return 'text-amber-400 border-amber-500/20 bg-amber-500/5';
       case 'ACADEMIC_ADMIN': return 'text-sky-400 border-sky-500/20 bg-sky-500/5';
@@ -37,6 +38,7 @@ export default function RoleSwitcher({ users, activeUser, onSelectUser }: RoleSw
   const getRoleExplanation = (role: UserRole) => {
     switch (role) {
       case 'MD': return 'Managing Director — Executive oversight, strategic dashboards, full institute controls.';
+      case 'PRINCIPAL': return 'Academy Principal — Academic leadership oversight, announced examinations & verification.';
       case 'SUPER_ADMIN': return 'System-wide configurations, audit log viewer, raw local database storage reset.';
       case 'ADMIN': return 'Manage students, configure batches, courses registry, handle admissions.';
       case 'ACADEMIC_ADMIN': return 'Curriculum builder (subjects/semesters), timetables scheduler, grades mapper.';

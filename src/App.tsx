@@ -16,6 +16,8 @@ import StudentPortfolioPublic from './components/StudentPortfolioPublic';
 import AuthGateway from './components/AuthGateway';
 import LibraryPortal from './components/LibraryPortal';
 import CourseRegistrationPortal from './components/CourseRegistrationPortal';
+import CourseSelectionPage from './components/CourseSelectionPage';
+import CourseVerificationPortal from './components/CourseVerificationPortal';
 
 import AdminPortal from './components/AdminPortal';
 import InstructorPortal from './components/InstructorPortal';
@@ -53,8 +55,11 @@ export default function App() {
   }, []);
 
   // Application general views
-  // 'landing' | 'login' | 'portfolio' | 'portal'
-  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'portfolio' | 'portal'>('login');
+  // 'landing' | 'login' | 'portfolio' | 'portal' | 'course-selection'
+  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'portfolio' | 'portal' | 'course-selection'>('login');
+  const [courseSelectionOrigin, setCourseSelectionOrigin] = useState<'landing' | 'login'>('landing');
+  const [preselectedCourseId, setPreselectedCourseId] = useState<string>('');
+  const [authInitialMode, setAuthInitialMode] = useState<'signin' | 'register'>('signin');
   
   // Parameterized sub-view states
   const [selectedPortfolioStudent, setSelectedPortfolioStudent] = useState<Student | null>(null);
@@ -62,9 +67,11 @@ export default function App() {
   // Individual Profile Modal State
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileTarget, setProfileTarget] = useState<IndividualProfileTarget | null>(null);
+  const [profileInitialEditMode, setProfileInitialEditMode] = useState(false);
 
-  const handleOpenProfileModal = (target: IndividualProfileTarget) => {
+  const handleOpenProfileModal = (target: IndividualProfileTarget, editMode = false) => {
     setProfileTarget(target);
+    setProfileInitialEditMode(editMode);
     setIsProfileModalOpen(true);
   };
 
@@ -278,7 +285,7 @@ export default function App() {
 
     if (auth.currentUser && activeUser) {
       try {
-        const isUserAdmin = isAdmin || activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD';
+        const isUserAdmin = isAdmin || activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'PRINCIPAL';
         const q = isUserAdmin
           ? query(collection(db, "notifications"))
           : query(collection(db, "notifications"), where('userId', '==', auth.currentUser.uid));
@@ -309,9 +316,22 @@ export default function App() {
   const activeStudentProfile = activeUser ? (students.find(s => s.userId === activeUser.id) || students[0]) : null;
   const activeInstructorProfile = activeUser ? (instructors.find(i => i.userId === activeUser.id) || instructors[0]) : null;
 
-  // CRM submissions triggers from landing form
-  const handleApplyFromLanding = (leadData: { name: string; email: string; phone: string; courseId: string; qualification: string; preferredBatch: string; message: string }) => {
-    // Write new Application Record
+  // CRM submissions triggers from landing form & course selection page
+  const handleApplyFromLanding = (leadData: {
+    name: string;
+    email: string;
+    phone: string;
+    courseId: string;
+    qualification: string;
+    preferredBatch: string;
+    message: string;
+    levelFilter?: string;
+    studyMode?: 'HYBRID' | 'PHYSICAL' | 'ONLINE';
+    preferredSchedule?: string;
+    experienceLevel?: string;
+    careerTrack?: string;
+  }) => {
+    // Write new Application Record with Department & MD verification defaults
     const apps = SwanayaDatabase.get<AdmissionApplication[]>("applications");
     const newApp: AdmissionApplication = {
       id: `app-${Date.now()}`,
@@ -322,9 +342,16 @@ export default function App() {
       qualification: leadData.qualification,
       preferredBatch: leadData.preferredBatch,
       message: leadData.message,
+      levelFilter: leadData.levelFilter,
+      studyMode: leadData.studyMode,
+      preferredSchedule: leadData.preferredSchedule,
+      experienceLevel: leadData.experienceLevel,
+      careerTrack: leadData.careerTrack,
       status: 'NEW',
-      leadSource: 'Website Application Form',
-      createdAt: new Date().toISOString().split('T')[0]
+      leadSource: leadData.careerTrack ? 'Course Selection Page' : 'Website Application Form',
+      createdAt: new Date().toISOString().split('T')[0],
+      departmentVerificationStatus: 'PENDING',
+      mdVerificationStatus: 'PENDING_MD',
     };
     SwanayaDatabase.set("applications", [newApp, ...apps]);
 
@@ -336,7 +363,7 @@ export default function App() {
       email: leadData.email,
       phone: leadData.phone,
       courseId: leadData.courseId,
-      source: 'Website Application Form',
+      source: newApp.leadSource,
       status: 'NEW',
       notes: leadData.message || 'Submitted online admission form.',
       assignedTo: 'usr-counsel',
@@ -344,20 +371,30 @@ export default function App() {
     };
     SwanayaDatabase.set("leads", [newLead, ...leads]);
 
-    // Send a system notification to Counselors
+    // Send system notifications to Counsellors and MD
     const notificationsList = SwanayaDatabase.get<Notification[]>("notifications");
-    const newNot: Notification = {
+    const timestampStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+    const counselNotif: Notification = {
       id: `not-${Date.now()}`,
       userId: 'usr-counsel',
-      title: 'New Admission Application',
-      message: `${leadData.name} submitted an enrollment proposal for ${leadData.preferredBatch}.`,
+      title: 'New Course Selection Verification Request',
+      message: `${leadData.name} submitted course selection options for ${leadData.preferredBatch}.`,
       type: 'INFO',
       read: false,
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 16)
+      createdAt: timestampStr
     };
-    SwanayaDatabase.set("notifications", [newNot, ...notificationsList]);
+    const mdNotif: Notification = {
+      id: `not-md-${Date.now()}`,
+      userId: 'usr-md',
+      title: 'Course Selection Awaiting Department & MD Verification',
+      message: `${leadData.name} selected course ${leadData.courseId} (${leadData.studyMode || 'HYBRID'}).`,
+      type: 'INFO',
+      read: false,
+      createdAt: timestampStr
+    };
+    SwanayaDatabase.set("notifications", [counselNotif, mdNotif, ...notificationsList]);
 
-    SwanayaDatabase.log("guest@swanaya.com", leadData.name, "ADMISSION_APPLY_ONLINE", `Applied for Course: ${leadData.courseId}`);
+    SwanayaDatabase.log("guest@swanaya.com", leadData.name, "COURSE_SELECTION_SUBMITTED", `Course: ${leadData.courseId} (${leadData.preferredBatch})`);
     handleRefreshAllData();
   };
 
@@ -400,13 +437,39 @@ export default function App() {
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
 
   // Render main core layout depending on current overall navigation view
+  if (currentView === 'course-selection') {
+    return (
+      <CourseSelectionPage
+        initialCourseId={preselectedCourseId}
+        originView={courseSelectionOrigin}
+        onBack={() => setCurrentView(courseSelectionOrigin)}
+        onNavigateToPortal={() => {
+          setAuthInitialMode('signin');
+          setCurrentView(activeUser ? 'portal' : 'login');
+        }}
+        onConfirmForRegistration={(courseId) => {
+          setPreselectedCourseId(courseId);
+          setAuthInitialMode('register');
+          setCurrentView('login');
+        }}
+        onApplyLead={handleApplyFromLanding}
+      />
+    );
+  }
+
   if (currentView === 'landing') {
     const listCourses = SwanayaDatabase.get<Course[]>("courses");
     return (
       <PublicLanding 
         courses={listCourses}
         onNavigateToPortal={() => {
+          setAuthInitialMode('signin');
           setCurrentView(activeUser ? 'portal' : 'login');
+        }}
+        onNavigateToCourseSelection={(courseId) => {
+          setPreselectedCourseId(courseId || '');
+          setCourseSelectionOrigin('landing');
+          setCurrentView('course-selection');
         }}
         onApplyLead={handleApplyFromLanding}
       />
@@ -416,6 +479,13 @@ export default function App() {
   if (currentView === 'login' || !activeUser) {
     return (
       <AuthGateway 
+        initialCourseId={preselectedCourseId}
+        initialAuthMode={authInitialMode}
+        onOpenCourseSelection={(courseId) => {
+          setPreselectedCourseId(courseId || '');
+          setCourseSelectionOrigin('login');
+          setCurrentView('course-selection');
+        }}
         onLoginSuccess={(user) => {
           handleSelectUser(user);
           setCurrentView('portal');
@@ -517,14 +587,22 @@ export default function App() {
           {/* Active User Indicator */}
           {activeUser && (
             <button 
+              type="button"
               onClick={() => handleOpenProfileModal({
                 type: activeUser.role === 'STUDENT' ? 'STUDENT' : activeUser.role === 'INSTRUCTOR' ? 'INSTRUCTOR' : 'USER',
                 id: activeUser.id
-              })}
-              className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-4 font-mono text-xs text-slate-400 hover:text-amber-400 transition-colors cursor-pointer text-left"
-              title="View & Edit Individual Profile Credentials"
+              }, true)}
+              className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-4 font-mono text-xs text-slate-400 hover:text-amber-400 transition-colors cursor-pointer text-left whitespace-nowrap shrink-0"
+              title="Edit Profile & Face Photo Settings"
             >
-              <span>Logged in:</span>
+              <img
+                src={activeUser.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(activeUser.name)}`}
+                alt={activeUser.name}
+                referrerPolicy="no-referrer"
+                className={`w-6 h-6 rounded-full bg-slate-900 border border-slate-700 object-cover ${
+                  activeUser.avatarFocus === 'center' ? 'object-center' : 'object-top'
+                }`}
+              />
               <strong className="text-slate-200 underline decoration-amber-500/50 underline-offset-4">{activeUser.name}</strong>
             </button>
           )}
@@ -597,8 +675,8 @@ export default function App() {
               Syllabus & ERP Modules
             </p>
 
-            {/* SUPER_ADMIN, MD, ADMIN, ACADEMIC_ADMIN, REVIEWER navigation elements */}
-            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
+            {/* SUPER_ADMIN, MD, PRINCIPAL, ADMIN, ACADEMIC_ADMIN, REVIEWER navigation elements */}
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'PRINCIPAL' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
               <>
                 <button 
                   onClick={() => { setActivePortalTab('overview'); setMobileMenuOpen(false); }}
@@ -729,7 +807,7 @@ export default function App() {
               </button>
             )}
 
-            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER' || activeUser.role === 'STUDENT' || activeUser.role === 'ALUMNI' || activeUser.role === 'PARENT') && (
+            {(activeUser.role === 'MD' || activeUser.role === 'PRINCIPAL' || activeUser.role === 'SUPER_ADMIN') && (
               <button 
                 onClick={() => { setActivePortalTab('exam-announcements'); setMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
@@ -737,11 +815,23 @@ export default function App() {
                 }`}
               >
                 <Megaphone className="w-4 h-4 text-amber-500" />
-                Exam Announcements
+                Announced Examination
               </button>
             )}
 
-            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'PRINCIPAL' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER' || activeUser.role === 'COUNSELLOR') && (
+              <button 
+                onClick={() => { setActivePortalTab('course-verification'); setMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                  activePortalTab === 'course-verification' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 text-amber-500" />
+                Course Selection Verify
+              </button>
+            )}
+
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'PRINCIPAL' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
               <button 
                 onClick={() => { setActivePortalTab('exam-verification'); setMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
@@ -858,10 +948,26 @@ export default function App() {
               Public Library
             </button>
 
+            <button
+              type="button"
+              onClick={() => {
+                handleOpenProfileModal({
+                  type: activeUser.role === 'STUDENT' ? 'STUDENT' : activeUser.role === 'INSTRUCTOR' ? 'INSTRUCTOR' : 'USER',
+                  id: activeUser.id
+                }, true);
+                setMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded text-xs font-semibold uppercase tracking-wider text-slate-300 hover:text-amber-300 hover:bg-amber-500/5 transition-all cursor-pointer"
+            >
+              <Settings className="w-4 h-4 text-amber-500" />
+              Edit Profile &amp; Photo
+            </button>
+
           </div>
 
           {/* User Profile Footer section in Sidebar */}
           <button 
+            type="button"
             onClick={() => handleOpenProfileModal({
               type: activeUser.role === 'STUDENT' ? 'STUDENT' : activeUser.role === 'INSTRUCTOR' ? 'INSTRUCTOR' : 'USER',
               id: activeUser.id
@@ -870,14 +976,17 @@ export default function App() {
             title="Open Individual Profile & Digital Identity Card"
           >
             <img 
-              src={activeUser.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${activeUser.name}`} 
-              alt={activeUser.name} 
-              className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800 group-hover:border-amber-500/50 transition-colors"
+              src={activeUser.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(activeUser.name)}`} 
+              alt={activeUser.name}
+              referrerPolicy="no-referrer"
+              className={`w-9 h-9 rounded-full bg-slate-900 border border-slate-800 group-hover:border-amber-500/50 transition-colors object-cover shrink-0 ${
+                activeUser.avatarFocus === 'center' ? 'object-center' : 'object-top'
+              }`}
             />
             <div className="truncate text-left flex-grow">
               <p className="text-xs font-bold text-slate-200 group-hover:text-amber-400 transition-colors truncate">{activeUser.name}</p>
               <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-amber-500 block">
-                {activeUser.role.replace('_', ' ')} · Profile ↗
+                {activeUser.role.replace('_', ' ')} · Profile Settings
               </span>
             </div>
           </button>
@@ -893,7 +1002,7 @@ export default function App() {
 
             {/* ACTIVE PORTAL TAB SWITCHER */}
             {(activePortalTab === 'overview' || activePortalTab === 'students' || activePortalTab === 'courses') && 
-             (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
+             (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'PRINCIPAL' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
               <AdminPortal 
                 activeRole={activeUser.role as any}
                 currentUser={activeUser}
@@ -949,7 +1058,7 @@ export default function App() {
               />
             )}
 
-            {activePortalTab === 'exam-announcements' && (
+            {activePortalTab === 'exam-announcements' && (activeUser.role === 'MD' || activeUser.role === 'PRINCIPAL' || activeUser.role === 'SUPER_ADMIN') && (
               <ExamAnnouncementsPortal
                 currentUser={activeUser}
                 studentProfile={activeStudentProfile}
@@ -966,7 +1075,14 @@ export default function App() {
               />
             )}
 
-            {activePortalTab === 'exam-verification' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
+            {activePortalTab === 'course-verification' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'PRINCIPAL' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER' || activeUser.role === 'COUNSELLOR') && (
+              <CourseVerificationPortal
+                currentUser={activeUser}
+                onRefreshAllData={handleRefreshAllData}
+              />
+            )}
+
+            {activePortalTab === 'exam-verification' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'PRINCIPAL' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
               <ExaminationEngineModule
                 mode="MD"
                 currentUser={activeUser}
@@ -1481,9 +1597,18 @@ export default function App() {
       {/* Individual Profile Modal View */}
       <IndividualProfileModal 
         isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
+        onClose={() => {
+          setIsProfileModalOpen(false);
+          setProfileInitialEditMode(false);
+        }}
         target={profileTarget}
         currentUser={activeUser}
+        initialEditMode={profileInitialEditMode}
+        onUserUpdated={(updatedUser) => {
+          if (activeUser && updatedUser.id === activeUser.id) {
+            setActiveUser(updatedUser);
+          }
+        }}
         onRefreshAllData={handleRefreshAllData}
       />
 

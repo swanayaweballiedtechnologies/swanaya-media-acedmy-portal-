@@ -14,7 +14,7 @@ import {
   Timestamp,
   serverTimestamp
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth } from '../firebase';
 
 export enum OperationType {
@@ -76,10 +76,87 @@ export const academyService = {
   async updateUserProfile(uid: string, profile: any) {
     const path = `users/${uid}`;
     try {
-      await updateDoc(doc(db, 'users', uid), profile);
+      const targetRef = doc(db, 'users', uid);
+      const existingSnap = await getDoc(targetRef);
+      if (existingSnap.exists()) {
+        await updateDoc(targetRef, {
+          ...profile,
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        await setDoc(targetRef, {
+          ...profile,
+          id: uid,
+          createdAt: profile.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }
+  },
+
+  async uploadProfileFaceImage(
+    uid: string,
+    file: File,
+    onProgress?: (percent: number) => void
+  ): Promise<string> {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `avatars/${uid}/${Date.now()}_${safeName}`;
+    const fileRef = ref(storage, storagePath);
+
+    return new Promise((resolve, reject) => {
+      const task = uploadBytesResumable(fileRef, file, {
+        contentType: file.type || 'image/jpeg',
+      });
+
+      let settled = false;
+      const timeoutId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try {
+            task.cancel();
+          } catch {
+            // ignore cancel error
+          }
+          reject(new Error('Storage upload timed out'));
+        }
+      }, 15000);
+
+      task.on(
+        'state_changed',
+        (snapshot) => {
+          if (snapshot.totalBytes > 0) {
+            const pct = Math.min(99, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+            onProgress?.(pct);
+          }
+        },
+        (err) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timeoutId);
+            reject(err);
+          }
+        },
+        async () => {
+          try {
+            const downloadUrl = await getDownloadURL(task.snapshot.ref);
+            if (!settled) {
+              settled = true;
+              clearTimeout(timeoutId);
+              onProgress?.(100);
+              resolve(downloadUrl);
+            }
+          } catch (err) {
+            if (!settled) {
+              settled = true;
+              clearTimeout(timeoutId);
+              reject(err);
+            }
+          }
+        }
+      );
+    });
   },
 
   // --- BLOGS ---
@@ -209,7 +286,7 @@ export const academyService = {
     }
   },
 
-  // --- REGISTRATIONS ---
+  // --- REGISTRATIONS (COURSE SELECTION & VERIFICATION) ---
   async registerForCourse(registration: any, captchaToken?: string | null) {
     const path = 'registrations';
     if (!captchaToken) {
@@ -226,16 +303,35 @@ export const academyService = {
       throw new Error(verifyData.error || 'CAPTCHA verification failed. Please verify again.');
     }
 
+    const nowIso = new Date().toISOString();
+    const recordId = registration.id || `creg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const payload = {
+      id: recordId,
+      userId: auth.currentUser?.uid || registration.userId || registration.studentId,
+      studentId: registration.studentId,
+      studentName: registration.studentName,
+      studentEmail: registration.studentEmail || '',
+      studentPhone: registration.studentPhone || '',
+      source: registration.source || 'PORTAL_COURSE_SELECTION',
+      courseId: registration.courseId,
+      courseCode: registration.courseCode || '',
+      courseTitle: registration.courseTitle,
+      courseCategory: registration.courseCategory || 'Media Science',
+      answers: registration.answers || {},
+      status: 'PENDING',
+      departmentVerificationStatus: 'PENDING',
+      mdVerificationStatus: 'PENDING_MD',
+      captchaVerifiedAt: nowIso,
+      timestamp: registration.timestamp || nowIso,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
     try {
-      const docRef = doc(collection(db, path));
-      await setDoc(docRef, {
-        ...registration,
-        id: docRef.id,
-        createdAt: serverTimestamp(),
-        status: 'PENDING',
-        captchaVerifiedAt: new Date().toISOString(),
-      });
-      
+      if (auth.currentUser) {
+        await setDoc(doc(db, path, recordId), payload);
+      }
+
       // Trigger welcome email notification via server endpoint
       fetch('/api/registrations/welcome', {
         method: 'POST',
@@ -248,23 +344,36 @@ export const academyService = {
         })
       }).catch(e => console.warn('Welcome email trigger notice:', e));
 
-      return docRef.id;
+      return payload;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
     }
   },
 
-  async getRegistrations(studentId?: string) {
+  async getRegistrations(userIdOrStudentId?: string) {
     const path = 'registrations';
     try {
-      let q = query(collection(db, path));
-      if (studentId) {
-        q = query(collection(db, path), where('studentId', '==', studentId));
-      }
+      const q = userIdOrStudentId
+        ? query(collection(db, path), where('userId', '==', userIdOrStudentId))
+        : query(collection(db, path));
       const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      return snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a: any, b: any) => String(b.updatedAt || b.timestamp || '').localeCompare(String(a.updatedAt || a.timestamp || '')));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, path);
+    }
+  },
+
+  async updateCourseRegistration(regId: string, updateData: any) {
+    const path = `registrations/${regId}`;
+    try {
+      await updateDoc(doc(db, 'registrations', regId), {
+        ...updateData,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
     }
   },
 
