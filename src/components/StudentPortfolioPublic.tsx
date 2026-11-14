@@ -4,21 +4,22 @@
  */
 
 import React from 'react';
-import { ArrowLeft, MapPin, Mail, Phone, Code, Award, ExternalLink, Github, Linkedin, Briefcase, FileText, ArrowUpRight } from 'lucide-react';
-import { Student, Project, Certificate, HackathonRegistration } from '../db/mockDb';
+import { ArrowLeft, MapPin, Mail, Phone, Code, Award, Star, ExternalLink, Github, Linkedin, Briefcase, FileText, ArrowUpRight } from 'lucide-react';
+import { SwanayaDatabase, Student, Project, AcademyReview, HackathonRegistration } from '../db/mockDb';
 
 interface StudentPortfolioPublicProps {
   student: Student;
   projects: Project[];
-  certificates: Certificate[];
   hackathons: HackathonRegistration[];
   onBack: () => void;
 }
 
-export default function StudentPortfolioPublic({ student, projects, certificates, hackathons, onBack }: StudentPortfolioPublicProps) {
+export default function StudentPortfolioPublic({ student, projects, hackathons, onBack }: StudentPortfolioPublicProps) {
   // Filter relevant student's items
   const studentProjects = projects.filter(p => p.studentId === student.id);
-  const studentCerts = certificates.filter(c => c.studentId === student.id);
+  const studentReviews = (SwanayaDatabase.get<AcademyReview[]>('reviews') || []).filter(
+    r => r.status === 'PUBLISHED' && (r.authorId === student.userId || r.authorName === student.name)
+  );
   const studentHacks = hackathons.filter(h => h.studentId === student.id);
 
   return (
@@ -178,36 +179,30 @@ export default function StudentPortfolioPublic({ student, projects, certificates
           </div>
         )}
 
-        {/* Verified Credentials */}
+        {/* Academy & Program Reviews */}
         <div className="space-y-4">
           <h2 className="text-lg font-serif font-semibold text-white border-b border-slate-800 pb-2 flex items-center gap-2">
-            <Award className="w-4 h-4 text-amber-400" />
-            Verifiable Academic Credentials
+            <Star className="w-4 h-4 text-amber-400" />
+            Academy &amp; Program Reviews
           </h2>
           
           <div className="space-y-3">
-            {studentCerts.length > 0 ? (
-              studentCerts.map((cert) => (
-                <div key={cert.id} className="bg-slate-900/40 border border-slate-800 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
-                  <div>
-                    <p className="font-semibold text-slate-200">{cert.courseName}</p>
-                    <p className="text-slate-500 text-[11px] mt-0.5">Reference ID: <span className="font-mono">{cert.id}</span> · Completed {cert.completionDate}</p>
+            {studentReviews.length > 0 ? (
+              studentReviews.map((rev) => (
+                <div key={rev.id} className="bg-slate-900/40 border border-slate-800 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
+                  <div className="space-y-1">
+                    <p className="font-semibold text-slate-200">{rev.title}</p>
+                    <p className="text-slate-400 text-[11px]">{rev.comment}</p>
+                    <p className="text-slate-500 text-[11px]">{rev.courseName} · {rev.createdAt?.substring(0, 10)}</p>
                   </div>
-                  <div className="flex items-center gap-3 self-end sm:self-auto font-mono text-[10px]">
-                    <span className="text-slate-500 font-bold uppercase">GRADE: {cert.grade}</span>
-                    <a 
-                      href={`/verify/${cert.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-2.5 py-1 bg-slate-950 border border-slate-800 text-amber-400 rounded hover:border-amber-500/30 transition-all flex items-center gap-1"
-                    >
-                      Verify <ExternalLink className="w-3 h-3" />
-                    </a>
+                  <div className="flex items-center gap-1.5 self-end sm:self-auto font-mono tabular-nums text-xs text-amber-400 shrink-0">
+                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                    <span>{Number(rev.rating).toFixed(1)} / 5.0</span>
                   </div>
                 </div>
               ))
             ) : (
-              <p className="text-xs text-slate-500">Course completed certificates will automatically render here upon graduation.</p>
+              <p className="text-xs text-slate-500">Course and academy reviews authored by this student will appear here.</p>
             )}
           </div>
         </div>

@@ -395,7 +395,7 @@ export default function ParentPortal({ parentUser, onRefreshAllData }: ParentPor
                   <p className="font-bold text-rose-300">Guardian Notice: Attendance Below 75% Requirement</p>
                   <p className="text-slate-300 text-[11px] leading-relaxed">
                     Student attendance is currently <span className="font-bold text-rose-300">{activeWard.attendancePercentage}%</span>. 
-                    Swanaya Media Academy policies require a minimum of 75% attendance for semester exam qualification and certificate issuance. 
+                    Swanaya Media Academy policies require a minimum of 75% attendance for semester exam qualification and graduation clearance. 
                     Please coordinate with course coordinator <strong className="text-white">{wardCourse?.coordinator || 'Prof. Ananthakrishnan S.'}</strong>.
                   </p>
                 </div>

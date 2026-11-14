@@ -215,13 +215,31 @@ export interface ExamAnnouncement {
   message: string;
   urgent: boolean;
   date: string;
+  examDate?: string;
+  startTime?: string;
+  endTime?: string;
+  examType?: 'SEMESTER_FINAL' | 'MID_TERM' | 'MCQ_ASSESSMENT' | 'PRACTICAL_JURY' | 'RE_EXAM';
+  subjectCode?: string;
+  subjectName?: string;
   courseId?: string;
+  courseName?: string;
   batchId?: string;
   examId?: string;
+  venue?: string;
+  deliveryMode?: 'ONLINE_PORTAL' | 'CAMPUS_CENTER' | 'HYBRID';
+  registrationDeadline?: string;
+  instructions?: string;
   pdfUrl?: string;
-  slidesUrl?: string;
   youtubeUrl?: string;
   active: boolean;
+  approvalStatus?: 'OFFICIAL' | 'PENDING_MD' | 'ARCHIVED';
+  createdById?: string;
+  createdByName?: string;
+  createdByRole?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ExamStudentSubmission {
@@ -233,6 +251,41 @@ export interface ExamStudentSubmission {
   marksObtained?: number;
   graded: boolean;
   feedback?: string;
+}
+
+export interface ExamCenter {
+  id: string;
+  name: string;
+  location: string;
+  totalCapacity: number;
+  availableSeats: number;
+}
+
+export interface ExamRegistration {
+  id: string;
+  examSessionId: string;
+  examTitle: string;
+  subjectCode: string;
+  subjectName: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  studentRegisterNo: string;
+  courseId: string;
+  courseName: string;
+  batchId: string;
+  batchName: string;
+  registrationDate: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  hallTicketNo?: string;
+  seatNumber?: string;
+  examCenterId?: string; // Link to ExamCenter
+  examCenterName?: string;
+  rejectionReason?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  feePaid: boolean;
+  attendanceEligible: boolean;
 }
 
 export interface ExamSession {
@@ -249,12 +302,102 @@ export interface ExamSession {
   totalMarks: number;
   passMarks: number;
   status: 'SCHEDULED' | 'LIVE' | 'COMPLETED' | 'CANCELLED';
+  registrationOpen?: boolean;
+  registrationDeadline?: string;
+  examFee?: number;
+  venue?: string;
   pdfQuestionPaperUrl?: string;
   pdfQuestionPaperName?: string;
-  slidesEmbedUrl?: string;
   youtubeVideoUrl?: string;
   instructions: string[];
   studentSubmissions?: ExamStudentSubmission[];
+}
+
+export interface ExamQuestionPaper {
+  id: string;
+  title: string;
+  subjectCode: string;
+  subjectName: string;
+  courseId: string;
+  courseName: string;
+  durationMinutes: number;
+  totalMarks: number;
+  passMarks: number;
+  instructions: string;
+  paperContent: string;
+  paperFileName?: string;
+  paperFileType?: string;
+  paperFileDataUrl?: string;
+  createdById: string;
+  createdByName: string;
+  mdVerificationStatus: 'PENDING_MD' | 'VERIFIED' | 'REJECTED';
+  mdVerifiedBy?: string;
+  mdVerifiedAt?: string;
+  mdRemarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface McqQuestion {
+  id: string;
+  prompt: string;
+  options: string[];
+  correctIndex: number;
+  marks: number;
+}
+
+export interface McqExam {
+  id: string;
+  title: string;
+  subjectCode: string;
+  subjectName: string;
+  courseId: string;
+  courseName: string;
+  durationMinutes: number;
+  totalMarks: number;
+  passMarks: number;
+  questions: McqQuestion[];
+  createdById: string;
+  createdByName: string;
+  mdVerificationStatus: 'PENDING_MD' | 'VERIFIED' | 'REJECTED';
+  mdVerifiedBy?: string;
+  mdVerifiedAt?: string;
+  mdRemarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudentExamSubmission {
+  id: string;
+  mode: 'ANSWERBOOK' | 'MCQ';
+  examRefId: string;
+  examTitle: string;
+  subjectCode: string;
+  userId: string;
+  studentId: string;
+  studentName: string;
+  studentRegisterNo: string;
+  answerNotes?: string;
+  answerFileName?: string;
+  answerFileType?: string;
+  answerFileDataUrl?: string;
+  mcqAnswers?: Record<string, number>;
+  autoScore?: number;
+  maxMarks: number;
+  passMarks: number;
+  marksObtained?: number;
+  grade?: string;
+  pass?: boolean;
+  evaluationStatus: 'SUBMITTED' | 'INSTRUCTOR_EVALUATED' | 'MD_VERIFIED' | 'RETURNED';
+  evaluatorId?: string;
+  evaluatorName?: string;
+  evaluatorRemarks?: string;
+  evaluatedAt?: string;
+  mdVerifiedBy?: string;
+  mdVerifiedAt?: string;
+  mdVerificationRemarks?: string;
+  submittedAt: string;
+  updatedAt: string;
 }
 
 export interface Project {
@@ -297,6 +440,23 @@ export interface HackathonRegistration {
   projectDescription?: string;
   score?: number;
   rank?: string;
+}
+
+export interface AcademyReview {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorRole: string;
+  courseId: string;
+  courseName: string;
+  rating: number;
+  title: string;
+  comment: string;
+  status: 'PUBLISHED' | 'FLAGGED';
+  verifiedStudent: boolean;
+  helpfulCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Certificate {
@@ -393,6 +553,67 @@ export interface AcademySettings {
   language: string;
 }
 
+export interface FrontPageCohortItem {
+  title: string;
+  subtitle: string;
+  badgeText: string;
+}
+
+export interface FrontPagePillar {
+  title: string;
+  description: string;
+}
+
+export interface FrontPageConfig {
+  id: string;
+  faviconUrl: string;
+  brandLogoUrl: string;
+  brandWordmark: string;
+  brandSubtitle: string;
+  portalButtonLabel: string;
+  heroEyebrow: string;
+  heroHeadlinePrefix: string;
+  heroHeadlineHighlight: string;
+  heroHeadlineSuffix: string;
+  heroDescription: string;
+  heroPrimaryCta: string;
+  heroSecondaryCta: string;
+  cohortCardTitle: string;
+  cohortLocationLabel: string;
+  cohortItems: FrontPageCohortItem[];
+  programsEyebrow: string;
+  programsTitle: string;
+  programsSubtitle: string;
+  philosophyEyebrow: string;
+  philosophyTitle: string;
+  philosophyDescription: string;
+  philosophyPillars: FrontPagePillar[];
+  testimonialQuote: string;
+  testimonialAuthor: string;
+  testimonialRole: string;
+  testimonialAvatarUrl: string;
+  reviewsEyebrow: string;
+  reviewsTitle: string;
+  reviewsSubtitle: string;
+  blogEyebrow: string;
+  blogTitle: string;
+  blogSubtitle: string;
+  admissionsEyebrow: string;
+  admissionsTitle: string;
+  admissionsSubtitle: string;
+  footerBrandTitle: string;
+  footerDescription: string;
+  contactEmail: string;
+  contactPhone: string;
+  contactLocation: string;
+  copyrightText: string;
+  showReviewsSection: boolean;
+  showBlogSection: boolean;
+  showAdmissionsSection: boolean;
+  updatedAt: string;
+  updatedBy: string;
+}
+
 // Global Static Data / Fallback for Fresh Launch
 export const INITIAL_SETTINGS: AcademySettings = {
   academyName: "Swanaya Media Academy",
@@ -407,6 +628,89 @@ export const INITIAL_SETTINGS: AcademySettings = {
   language: "English"
 };
 
+export const INITIAL_FRONT_PAGE_CONFIG: FrontPageConfig = {
+  id: "front_page",
+  faviconUrl: "/favicon.svg",
+  brandLogoUrl: "",
+  brandWordmark: "SWANAYA",
+  brandSubtitle: "ACADEMY",
+  portalButtonLabel: "Enterprise Portal",
+  heroEyebrow: "Swanaya Media Enterprises Wing",
+  heroHeadlinePrefix: "Training that builds",
+  heroHeadlineHighlight: "job-ready professionals",
+  heroHeadlineSuffix: "— not just certificates.",
+  heroDescription: "Swanaya Media Academy delivers elite industry-focused certification programs in AI Media Production, High-Frequency Web Development, and Digital Strategy. Crafted by real professionals for high-caliber learners.",
+  heroPrimaryCta: "Apply Online",
+  heroSecondaryCta: "Explore Curriculum",
+  cohortCardTitle: "Next Cohorts Starting Oct 2026",
+  cohortLocationLabel: "Location · Trivandrum & Online",
+  cohortItems: [
+    {
+      title: "Web Development & Vibe Coding",
+      subtitle: "Duration: 12 Months · Advanced Diploma",
+      badgeText: "Limited Seats"
+    },
+    {
+      title: "AI Media & Integrated Marketing",
+      subtitle: "Duration: 6 Months · Diploma",
+      badgeText: "Filling Fast"
+    },
+    {
+      title: "AI & Business Communication",
+      subtitle: "Duration: 3 Months · Professional Certification",
+      badgeText: "Open"
+    }
+  ],
+  programsEyebrow: "ACADEMIC ECOSYSTEM",
+  programsTitle: "Programs of Swanaya Media Academy",
+  programsSubtitle: "Strict industry curriculum engineered to elevate digital skills to corporate standards.",
+  philosophyEyebrow: "THE COGNITIVE SHIFT",
+  philosophyTitle: "Why Swanaya Media Academy?",
+  philosophyDescription: "Most educational systems teach outdated, generic documentation. At Swanaya, we build real code alongside LLMs in high-frequency vibe environments. We shoot real cinema on high-grade cameras. We deploy live, monetizable SaaS platforms.",
+  philosophyPillars: [
+    {
+      title: "100% Industry Aligned",
+      description: "Direct integration with Swanaya Media Enterprise projects."
+    },
+    {
+      title: "Vibe Coding Mastery",
+      description: "Continuous AI collaboration tools to ship software at extreme speeds."
+    },
+    {
+      title: "Production Studio Access",
+      description: "Professional cameras, lighting sets, and audio post-suites."
+    },
+    {
+      title: "Verified Student Reviews",
+      description: "Transparent peer ratings and feedback across every program."
+    }
+  ],
+  testimonialQuote: "Swanaya Media Academy transformed my perspective on engineering. I didn't just learn React; I learned how to build production-grade interfaces using advanced AI prompts. Within three weeks of completing my Advanced Diploma, I was hired by a major regional SaaS team.",
+  testimonialAuthor: "Aravind K. Kumar",
+  testimonialRole: "Lead Web Architect · Alumnus 2026",
+  testimonialAvatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Aravind",
+  reviewsEyebrow: "STUDENT FEEDBACK",
+  reviewsTitle: "Academy Reviews & Ratings",
+  reviewsSubtitle: "Read candid feedback from enrolled scholars and graduates, or share your experience with our curriculum and studio mentorship.",
+  blogEyebrow: "INTELLECTUAL CAPITAL",
+  blogTitle: "Academy Blog & Insights",
+  blogSubtitle: "Deep dives into AI engineering, digital strategy, and the future of media production from our expert faculty.",
+  admissionsEyebrow: "ONLINE APPLICATION",
+  admissionsTitle: "Join the Next Cohort",
+  admissionsSubtitle: "No complex procedures. Fill in your details and an admission counselor will contact you within 24 hours.",
+  footerBrandTitle: "SWANAYA MEDIA ACADEMY",
+  footerDescription: "Swanaya Media Academy is the official elite training and certification division of Swanaya Media Enterprises. Providing expert corporate readiness in AI, design, and software systems.",
+  contactEmail: "academy@swanayamedia.com",
+  contactPhone: "+91 94460 00000",
+  contactLocation: "Thiruvananthapuram, Kerala",
+  copyrightText: "© 2026 Swanaya Media Academy. Training & Certification Wing of Swanaya Media Enterprises. All Rights Reserved.",
+  showReviewsSection: true,
+  showBlogSection: true,
+  showAdmissionsSection: true,
+  updatedAt: "2026-10-01T00:00:00.000Z",
+  updatedBy: "System Default"
+};
+
 export const INITIAL_COURSES: Course[] = [];
 export const INITIAL_SEMESTERS: Semester[] = [];
 export const INITIAL_SUBJECTS: Subject[] = [];
@@ -414,7 +718,7 @@ export const INITIAL_LESSONS: Lesson[] = [];
 export const INITIAL_BATCHES: Batch[] = [];
 
 export const INITIAL_USERS: User[] = [
-  { id: "usr-md", username: "aadithyan", email: "aadithyan.menon@swanayamedia.com", name: "AADITHYAN M MENON (MD)", role: "MD", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Adithyan", status: "ACTIVE", createdAt: "2026-01-01", isVerified: true },
+  { id: "usr-md", username: "aadithyan", email: "aadithyan.menon@swanayamedia.com", name: "AADITHYAN M MENON", role: "MD", avatarUrl: "https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon", status: "ACTIVE", createdAt: "2026-01-01", isVerified: true },
   { id: "usr-navven", username: "navven", email: "navven.admin@swanayamedia.com", name: "NAVVEN (Administrator)", role: "ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Naveen", status: "ACTIVE", createdAt: "2026-01-02", isVerified: true },
   { id: "usr-reviewer", username: "reviewer", email: "reviewer@swanayamedia.com", name: "Academic Reviewer", role: "REVIEWER", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Reviewer", status: "ACTIVE", createdAt: "2026-01-05", isVerified: true },
   { id: "usr-alumni", username: "alumni", email: "alumni@swanayamedia.com", name: "Alumni Graduate", role: "ALUMNI", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alumni", status: "ACTIVE", createdAt: "2026-01-08", isVerified: true }
@@ -438,74 +742,19 @@ export const INITIAL_APPLICATIONS: AdmissionApplication[] = [];
 export const INITIAL_NOTIFICATIONS: Notification[] = [];
 export const INITIAL_AUDIT_LOGS: AuditLog[] = [];
 
-export const INITIAL_EXAM_ANNOUNCEMENTS: ExamAnnouncement[] = [
-  {
-    id: "ann-1",
-    title: "🚨 Mid-Term Examination Session Live: Advanced Web Architecture",
-    message: "The official online examination for Subject WD-102 (React & TypeScript) is now live! Please review the attached PDF Question Paper, slide deck guidelines, and video stream instructions.",
-    urgent: true,
-    date: new Date().toISOString().split('T')[0],
-    pdfUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
-    slidesUrl: "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/embed?start=false&loop=false&delayms=3000",
-    youtubeUrl: "https://www.youtube.com/embed/gB1F9G0J48A",
-    active: true
-  }
-];
+export const INITIAL_EXAM_ANNOUNCEMENTS: ExamAnnouncement[] = [];
 
-export const INITIAL_EXAM_SESSIONS: ExamSession[] = [
-  {
-    id: "session-101",
-    title: "Mid-Term Technical Examination: TypeScript & React Architecture",
-    subjectCode: "JS-102",
-    subjectName: "TypeScript & React Modern Architecture",
-    courseId: "c-1",
-    batchId: "b-1",
-    scheduledDate: new Date().toISOString().split('T')[0],
-    startTime: "10:00 AM",
-    endTime: "01:00 PM",
-    durationMinutes: 180,
-    totalMarks: 100,
-    passMarks: 50,
-    status: "LIVE",
-    pdfQuestionPaperUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
-    pdfQuestionPaperName: "JS-102_MidTerm_Question_Paper.pdf",
-    slidesEmbedUrl: "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/embed?start=false&loop=false&delayms=3000",
-    youtubeVideoUrl: "https://www.youtube.com/embed/gB1F9G0J48A",
-    instructions: [
-      "1. Ensure stable internet connection during the 3-hour examination window.",
-      "2. Review the embedded PDF Question Paper and YouTube briefing video before starting.",
-      "3. Refer to the official Google Slides revision deck if needed.",
-      "4. Submit your answer text, code repository link, or answer sheet file URL in the submission box.",
-      "5. Late submissions after 01:00 PM will incur a 10% penalty."
-    ],
-    studentSubmissions: []
-  },
-  {
-    id: "session-102",
-    title: "AI Media Production & Video Editing Practical Evaluation",
-    subjectCode: "AI-201",
-    subjectName: "AI Video & Media Production Sandbox",
-    courseId: "c-2",
-    batchId: "b-2",
-    scheduledDate: "2026-11-10",
-    startTime: "02:00 PM",
-    endTime: "05:00 PM",
-    durationMinutes: 180,
-    totalMarks: 100,
-    passMarks: 60,
-    status: "SCHEDULED",
-    pdfQuestionPaperUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
-    pdfQuestionPaperName: "AI-201_Practical_Task_Sheet.pdf",
-    slidesEmbedUrl: "https://docs.google.com/presentation/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/embed?start=false&loop=false&delayms=3000",
-    youtubeVideoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
-    instructions: [
-      "1. Render and upload a 60-second AI-generated short clip.",
-      "2. Submit your project link and prompt sheet PDF.",
-      "3. Physical presence in Lab Beta or online video link is mandatory."
-    ],
-    studentSubmissions: []
-  }
-];
+export const INITIAL_EXAM_SESSIONS: ExamSession[] = [];
+
+export const INITIAL_EXAM_REGISTRATIONS: ExamRegistration[] = [];
+
+export const INITIAL_REVIEWS: AcademyReview[] = [];
+
+export const INITIAL_QUESTION_PAPERS: ExamQuestionPaper[] = [];
+
+export const INITIAL_MCQ_EXAMS: McqExam[] = [];
+
+export const INITIAL_EXAM_SUBMISSIONS: StudentExamSubmission[] = [];
 
 // Helper database controller with localStorage sync
 export class SwanayaDatabase {
@@ -516,13 +765,14 @@ export class SwanayaDatabase {
     this.isInitializing = true;
 
     try {
-      if (!localStorage.getItem("sma_database_purged_suresh_v4")) {
-        localStorage.setItem("sma_database_purged_suresh_v4", "true");
+      if (!localStorage.getItem("sma_database_purged_all_demo_v5")) {
+        localStorage.setItem("sma_database_purged_all_demo_v5", "true");
         this.clearAllPreloadedData();
       }
 
       const keys = {
         settings: INITIAL_SETTINGS,
+        frontPageConfig: INITIAL_FRONT_PAGE_CONFIG,
         courses: [],
         semesters: [],
         subjects: [],
@@ -546,8 +796,13 @@ export class SwanayaDatabase {
         applications: [],
         notifications: [],
         auditLogs: [],
-        examAnnouncements: INITIAL_EXAM_ANNOUNCEMENTS,
-        examSessions: INITIAL_EXAM_SESSIONS
+        examAnnouncements: [],
+        examSessions: [],
+        examRegistrations: [],
+        reviews: [],
+        questionPapers: [],
+        mcqExams: [],
+        examSubmissions: []
       };
 
       Object.entries(keys).forEach(([key, defaultValue]) => {
@@ -592,7 +847,7 @@ export class SwanayaDatabase {
         id: "usr-md",
         username: "aadithyan",
         email: "aadithyan.menon@swanayamedia.com",
-        name: "AADITHYAN M MENON (MD)",
+        name: "AADITHYAN M MENON",
         role: "MD",
         status: "ACTIVE",
         createdAt: new Date().toISOString().split('T')[0],
@@ -652,6 +907,13 @@ export class SwanayaDatabase {
     localStorage.setItem("sma_leads", JSON.stringify([]));
     localStorage.setItem("sma_applications", JSON.stringify([]));
     localStorage.setItem("sma_notifications", JSON.stringify([]));
+    localStorage.setItem("sma_examAnnouncements", JSON.stringify([]));
+    localStorage.setItem("sma_examSessions", JSON.stringify([]));
+    localStorage.setItem("sma_examRegistrations", JSON.stringify([]));
+    localStorage.setItem("sma_reviews", JSON.stringify([]));
+    localStorage.setItem("sma_questionPapers", JSON.stringify([]));
+    localStorage.setItem("sma_mcqExams", JSON.stringify([]));
+    localStorage.setItem("sma_examSubmissions", JSON.stringify([]));
     
     const initialLog: AuditLog = {
       id: `log-${Date.now()}`,
@@ -668,6 +930,7 @@ export class SwanayaDatabase {
   static restoreDefaultData() {
     const keys = {
       settings: INITIAL_SETTINGS,
+      frontPageConfig: INITIAL_FRONT_PAGE_CONFIG,
       courses: INITIAL_COURSES,
       semesters: INITIAL_SEMESTERS,
       subjects: INITIAL_SUBJECTS,
@@ -690,7 +953,11 @@ export class SwanayaDatabase {
       leads: INITIAL_LEADS,
       applications: INITIAL_APPLICATIONS,
       notifications: INITIAL_NOTIFICATIONS,
-      auditLogs: INITIAL_AUDIT_LOGS
+      auditLogs: INITIAL_AUDIT_LOGS,
+      reviews: INITIAL_REVIEWS,
+      questionPapers: INITIAL_QUESTION_PAPERS,
+      mcqExams: INITIAL_MCQ_EXAMS,
+      examSubmissions: INITIAL_EXAM_SUBMISSIONS
     };
 
     Object.entries(keys).forEach(([key, defaultValue]) => {

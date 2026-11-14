@@ -6,14 +6,16 @@
 import React, { useState, useEffect } from 'react';
 import { 
   SwanayaDatabase, User, Student, Course, Batch, Instructor, Invoice, 
-  Lead, AdmissionApplication, Notification, AuditLog, AcademySettings, Project, Certificate, ClassSchedule, Semester, Subject 
+  Lead, AdmissionApplication, Notification, AuditLog, AcademySettings, Project, ClassSchedule, Semester, Subject, FrontPageConfig 
 } from './db/mockDb';
+import { applyDocumentFavicon } from './utils/favicon';
 
 import PublicLanding from './components/PublicLanding';
 import RoleSwitcher from './components/RoleSwitcher';
-import CertificateVerifyPublic from './components/CertificateVerifyPublic';
 import StudentPortfolioPublic from './components/StudentPortfolioPublic';
 import AuthGateway from './components/AuthGateway';
+import LibraryPortal from './components/LibraryPortal';
+import CourseRegistrationPortal from './components/CourseRegistrationPortal';
 
 import AdminPortal from './components/AdminPortal';
 import InstructorPortal from './components/InstructorPortal';
@@ -24,28 +26,47 @@ import CareerPortal from './components/CareerPortal';
 import ParentPortal from './components/ParentPortal';
 import SettingsAuditPortal from './components/SettingsAuditPortal';
 import StudentAiAssistant from './components/StudentAiAssistant';
-import ExaminationAnnouncementBar from './components/ExaminationAnnouncementBar';
-import ExaminationSessionPortal from './components/ExaminationSessionPortal';
+
+import MediaHubModule from './components/MediaHubModule';
+import ExamRegistrationPortal from './components/ExamRegistrationPortal';
+import ExaminationEngineModule from './components/ExaminationEngineModule';
+import ExamAnnouncementsPortal from './components/ExamAnnouncementsPortal';
+import ReviewsPortal from './components/ReviewsPortal';
+import IndividualProfileModal, { IndividualProfileTarget } from './components/IndividualProfileModal';
 
 import { 
   Home, Users, BookOpen, Layers, Calendar, ClipboardCheck, 
-  FileText, Award, Briefcase, DollarSign, Settings, ShieldAlert,
-  Bell, LogOut, Menu, X, ArrowLeft, ArrowUpRight, Sparkles, GraduationCap, CheckCircle2, AlertTriangle 
+  FileText, Star, Briefcase, DollarSign, Settings, ShieldAlert, ShieldCheck,
+  Bell, LogOut, Menu, X, ArrowLeft, ArrowUpRight, Sparkles, GraduationCap, CheckCircle2, AlertTriangle, Film, Megaphone
 } from 'lucide-react';
+import { useAuth } from './components/FirebaseAuthProvider';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db, auth } from './firebase';
+import { signOut } from 'firebase/auth';
 
 export default function App() {
   // Initialize standard local db on boot
   useEffect(() => {
     SwanayaDatabase.init();
+    const savedFrontPage = SwanayaDatabase.get<FrontPageConfig>('frontPageConfig');
+    applyDocumentFavicon(savedFrontPage?.faviconUrl);
   }, []);
 
   // Application general views
-  // 'landing' | 'login' | 'verify' | 'portfolio' | 'portal'
-  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'verify' | 'portfolio' | 'portal'>('login');
+  // 'landing' | 'login' | 'portfolio' | 'portal'
+  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'portfolio' | 'portal'>('login');
   
   // Parameterized sub-view states
-  const [selectedVerifyCertId, setSelectedVerifyCertId] = useState<string>('');
   const [selectedPortfolioStudent, setSelectedPortfolioStudent] = useState<Student | null>(null);
+
+  // Individual Profile Modal State
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileTarget, setProfileTarget] = useState<IndividualProfileTarget | null>(null);
+
+  const handleOpenProfileModal = (target: IndividualProfileTarget) => {
+    setProfileTarget(target);
+    setIsProfileModalOpen(true);
+  };
 
   // Quick-Access Modal States (New focused features!)
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -87,9 +108,20 @@ export default function App() {
   const [exportingReport, setExportingReport] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
 
+  // Auth integration
+  const { profile, loading: authLoading, isAdmin } = useAuth();
+
   // Users & Active User states (Requires authentication on login first)
   const [users, setUsers] = useState<User[]>(() => SwanayaDatabase.get<User[]>("users"));
   const [activeUser, setActiveUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    if (profile) {
+      setActiveUser(profile as User);
+    } else {
+      setActiveUser(null);
+    }
+  }, [profile]);
 
   // Re-fetch reactive states to update widgets instantly across CRUDs
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -237,14 +269,41 @@ export default function App() {
     setSettings(SwanayaDatabase.get<AcademySettings>("settings"));
     setUsers(SwanayaDatabase.get<User[]>("users"));
     
-    // Filter notifications for active user
-    if (activeUser) {
-      const list = SwanayaDatabase.get<Notification[]>("notifications");
-      setNotifications(list.filter(n => n.userId === activeUser.id || activeUser.role === 'SUPER_ADMIN'));
-    } else {
+    // Real-time synchronization of notifications across devices
+    let unsubscribeNotifs: (() => void) | null = null;
+    
+    // Always initialize notifications from local database
+    const localNotifs = SwanayaDatabase.get<Notification[]>("notifications") || [];
+    setNotifications(localNotifs);
+
+    if (auth.currentUser && activeUser) {
+      try {
+        const isUserAdmin = isAdmin || activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD';
+        const q = isUserAdmin
+          ? query(collection(db, "notifications"))
+          : query(collection(db, "notifications"), where('userId', '==', auth.currentUser.uid));
+
+        unsubscribeNotifs = onSnapshot(q, (snapshot) => {
+          if (!snapshot.empty) {
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
+            setNotifications(list);
+          }
+        }, (error) => {
+          // Gracefully handle permission errors when using local demo profiles
+          console.warn("Notifications sync notice (using local data store):", error.message);
+          setNotifications(SwanayaDatabase.get<Notification[]>("notifications") || []);
+        });
+      } catch (err: any) {
+        console.warn("Notifications listener setup skipped:", err?.message);
+      }
+    } else if (!activeUser) {
       setNotifications([]);
     }
-  }, [activeUser, refreshTrigger]);
+
+    return () => {
+      if (unsubscribeNotifs) unsubscribeNotifs();
+    };
+  }, [activeUser, refreshTrigger, isAdmin]);
 
   // Find respective active student or instructor object matching active logged in user
   const activeStudentProfile = activeUser ? (students.find(s => s.userId === activeUser.id) || students[0]) : null;
@@ -303,7 +362,7 @@ export default function App() {
   };
 
   // Navigation Sidemenu logic (Dynamic depending on active role)
-  // 'overview' | 'students' | 'courses' | 'curriculum' | 'attendance' | 'assignments' | 'projects' | 'finance' | 'cRM' | 'career' | 'settings'
+  // 'overview' | 'students' | 'courses' | 'curriculum' | 'attendance' | 'assignments' | 'projects' | 'finance' | 'cRM' | 'career' | 'settings' | 'media'
   const [activePortalTab, setActivePortalTab] = useState<string>('overview');
 
   // Triggered when RoleSwitcher changes user context
@@ -347,11 +406,7 @@ export default function App() {
       <PublicLanding 
         courses={listCourses}
         onNavigateToPortal={() => {
-          setCurrentView('login');
-        }}
-        onNavigateToVerify={(certId) => {
-          setSelectedVerifyCertId(certId);
-          setCurrentView('verify');
+          setCurrentView(activeUser ? 'portal' : 'login');
         }}
         onApplyLead={handleApplyFromLanding}
       />
@@ -370,27 +425,13 @@ export default function App() {
     );
   }
 
-  if (currentView === 'verify') {
-    return (
-      <CertificateVerifyPublic 
-        initialCertId={selectedVerifyCertId}
-        onBack={() => {
-          setSelectedVerifyCertId('');
-          setCurrentView('landing');
-        }}
-      />
-    );
-  }
-
   if (currentView === 'portfolio' && selectedPortfolioStudent) {
     const listProjects = SwanayaDatabase.get<Project[]>("projects");
-    const listCerts = SwanayaDatabase.get<Certificate[]>("certificates");
     const listHacks = SwanayaDatabase.get<any[]>("hackathonRegistrations");
     return (
       <StudentPortfolioPublic 
         student={selectedPortfolioStudent}
         projects={listProjects}
-        certificates={listCerts}
         hackathons={listHacks}
         onBack={() => {
           setSelectedPortfolioStudent(null);
@@ -475,26 +516,28 @@ export default function App() {
 
           {/* Active User Indicator */}
           {activeUser && (
-            <div className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-4 font-mono text-xs text-slate-400">
+            <button 
+              onClick={() => handleOpenProfileModal({
+                type: activeUser.role === 'STUDENT' ? 'STUDENT' : activeUser.role === 'INSTRUCTOR' ? 'INSTRUCTOR' : 'USER',
+                id: activeUser.id
+              })}
+              className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-4 font-mono text-xs text-slate-400 hover:text-amber-400 transition-colors cursor-pointer text-left"
+              title="View & Edit Individual Profile Credentials"
+            >
               <span>Logged in:</span>
-              <strong className="text-slate-200">{activeUser.name}</strong>
-            </div>
+              <strong className="text-slate-200 underline decoration-amber-500/50 underline-offset-4">{activeUser.name}</strong>
+            </button>
           )}
 
         </div>
 
         {/* Zone 3: Interactive Role Switcher & Action buttons */}
         <div className="flex items-center gap-3 shrink-0">
-          {activeUser && (
-            <RoleSwitcher 
-              users={users}
-              activeUser={activeUser}
-              onSelectUser={handleSelectUser}
-            />
-          )}
+          {/* Top-bar Role Switcher removed per request */}
 
           <button 
-            onClick={() => {
+            onClick={async () => {
+              await signOut(auth);
               setActiveUser(null);
               setCurrentView('login');
             }}
@@ -539,14 +582,8 @@ export default function App() {
         </div>
       </div>
 
-      {/* Live Examination Session Announcement & Ticker Bar */}
-      <ExaminationAnnouncementBar 
-        currentUser={activeUser}
-        onOpenExamSession={(sessionId) => {
-          setActivePortalTab('exam');
-        }}
-        onRefresh={handleRefreshAllData}
-      />
+
+
 
       {/* Sidebar & Workspace layout wrapper - Rendered as a DIV so it is div:nth-of-type(3) */}
       <div className="flex-grow flex flex-col md:flex-row relative">
@@ -590,7 +627,7 @@ export default function App() {
                   }`}
                 >
                   <BookOpen className="w-4 h-4 text-amber-500" />
-                  Syllabus Blueprints
+                  Syllabus & Course Creation
                 </button>
               </>
             )}
@@ -617,6 +654,16 @@ export default function App() {
                   <FileText className="w-4 h-4 text-amber-500" />
                   Assignments Hub
                 </button>
+
+                <button 
+                  onClick={() => { setActivePortalTab('instructor-exams'); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                    activePortalTab === 'instructor-exams' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <FileText className="w-4 h-4 text-amber-500" />
+                  Papers, MCQs &amp; Grading
+                </button>
               </>
             )}
 
@@ -635,14 +682,74 @@ export default function App() {
 
             {/* STUDENT & ALUMNI PORTAL navigation widgets */}
             {(activeUser.role === 'STUDENT' || activeUser.role === 'ALUMNI') && activeStudentProfile && (
+              <>
+                <button 
+                  onClick={() => { setActivePortalTab('student'); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                    activePortalTab === 'student' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <GraduationCap className="w-4 h-4 text-amber-500" />
+                  {activeUser.role === 'ALUMNI' ? 'Alumni Graduate Classroom' : 'My Study Classroom'}
+                </button>
+
+                <button 
+                  onClick={() => { setActivePortalTab('exams'); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                    activePortalTab === 'exams' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <FileText className="w-4 h-4 text-amber-500" />
+                  Exams &amp; Answerbooks
+                </button>
+              </>
+            )}
+
+            {(activeUser.role === 'STUDENT') && (
               <button 
-                onClick={() => { setActivePortalTab('student'); setMobileMenuOpen(false); }}
+                onClick={() => { setActivePortalTab('registration'); setMobileMenuOpen(false); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
-                  activePortalTab === 'student' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                  activePortalTab === 'registration' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <GraduationCap className="w-4 h-4 text-amber-500" />
-                {activeUser.role === 'ALUMNI' ? 'Alumni Graduate Classroom' : 'My Study Classroom'}
+                <BookOpen className="w-4 h-4 text-amber-500" />
+                Course Registration
+              </button>
+            )}
+
+            {(activeUser.role === 'STUDENT' || activeUser.role === 'ALUMNI' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'INSTRUCTOR') && (
+              <button 
+                onClick={() => { setActivePortalTab('exam-registration'); setMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                  activePortalTab === 'exam-registration' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <ClipboardCheck className="w-4 h-4 text-amber-500" />
+                {activeUser.role === 'STUDENT' || activeUser.role === 'ALUMNI' ? 'Exam Registration' : 'Exam Sessions & Approvals'}
+              </button>
+            )}
+
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER' || activeUser.role === 'STUDENT' || activeUser.role === 'ALUMNI' || activeUser.role === 'PARENT') && (
+              <button 
+                onClick={() => { setActivePortalTab('exam-announcements'); setMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                  activePortalTab === 'exam-announcements' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Megaphone className="w-4 h-4 text-amber-500" />
+                Exam Announcements
+              </button>
+            )}
+
+            {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
+              <button 
+                onClick={() => { setActivePortalTab('exam-verification'); setMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                  activePortalTab === 'exam-verification' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 text-amber-500" />
+                MD Exam Verification
               </button>
             )}
 
@@ -659,15 +766,26 @@ export default function App() {
               </button>
             )}
 
-            {/* EXAM SESSIONS & MULTIMEDIA HUB */}
+            {/* MEDIA HUB & BLOG */}
             <button 
-              onClick={() => { setActivePortalTab('exam'); setMobileMenuOpen(false); }}
+              onClick={() => { setActivePortalTab('media'); setMobileMenuOpen(false); }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
-                activePortalTab === 'exam' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                activePortalTab === 'media' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Award className="w-4 h-4 text-amber-500" />
-              Exams & Media Hub
+              <Film className="w-4 h-4 text-amber-500" />
+              Media Hub & Blog
+            </button>
+
+            {/* ACADEMY REVIEWS */}
+            <button 
+              onClick={() => { setActivePortalTab('reviews'); setMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                activePortalTab === 'reviews' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Star className="w-4 h-4 text-amber-500" />
+              Academy Reviews
             </button>
 
             {/* CAREER & PLACEMENTS HUB */}
@@ -696,35 +814,73 @@ export default function App() {
               </button>
             )}
 
-            {/* SYSTEM CONFIGURATION & AUDITS */}
+            {/* SYSTEM CONFIGURATION, FRONT PAGE EDITOR & AUDITS */}
             {(activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD') && (
-              <button 
-                onClick={() => { setActivePortalTab('settings'); setMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
-                  activePortalTab === 'settings' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Settings className="w-4 h-4 text-amber-500" />
-                System Configurations
-              </button>
+              <>
+                <button 
+                  onClick={() => { setActivePortalTab('front-page'); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                    activePortalTab === 'front-page' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  Front Page Editor
+                </button>
+
+                <button 
+                  onClick={() => { setActivePortalTab('settings'); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                    activePortalTab === 'settings' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Settings className="w-4 h-4 text-amber-500" />
+                  System Configurations
+                </button>
+
+                <div className="px-3 py-2">
+                  <p className="text-[9px] font-bold tracking-widest text-slate-600 uppercase font-mono mb-2">Role Switcher</p>
+                  <RoleSwitcher 
+                    users={users}
+                    activeUser={activeUser}
+                    onSelectUser={handleSelectUser}
+                  />
+                </div>
+              </>
             )}
+
+            <button 
+              onClick={() => { setActivePortalTab('library'); setMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded.5 text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
+                activePortalTab === 'library' ? 'bg-amber-500/10 border-l-2 border-amber-500 text-amber-300' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <BookOpen className="w-4 h-4 text-amber-500" />
+              Public Library
+            </button>
 
           </div>
 
           {/* User Profile Footer section in Sidebar */}
-          <div className="p-4 border-t border-slate-900 bg-slate-950/40 flex items-center gap-3">
+          <button 
+            onClick={() => handleOpenProfileModal({
+              type: activeUser.role === 'STUDENT' ? 'STUDENT' : activeUser.role === 'INSTRUCTOR' ? 'INSTRUCTOR' : 'USER',
+              id: activeUser.id
+            })}
+            className="p-4 border-t border-slate-900 bg-slate-950/40 flex items-center gap-3 hover:bg-slate-900/60 transition-colors cursor-pointer w-full text-left group"
+            title="Open Individual Profile & Digital Identity Card"
+          >
             <img 
               src={activeUser.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${activeUser.name}`} 
               alt={activeUser.name} 
-              className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800"
+              className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800 group-hover:border-amber-500/50 transition-colors"
             />
-            <div className="truncate text-left">
-              <p className="text-xs font-bold text-slate-200 truncate">{activeUser.name}</p>
+            <div className="truncate text-left flex-grow">
+              <p className="text-xs font-bold text-slate-200 group-hover:text-amber-400 transition-colors truncate">{activeUser.name}</p>
               <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-amber-500 block">
-                {activeUser.role.replace('_', ' ')}
+                {activeUser.role.replace('_', ' ')} · Profile ↗
               </span>
             </div>
-          </div>
+          </button>
         </aside>
 
         {/* WORKSPACE CONTENT FIELD - Rendered as a DIV so it is div:nth-of-type(1) inside div:nth-of-type(3) */}
@@ -736,43 +892,24 @@ export default function App() {
 
 
             {/* ACTIVE PORTAL TAB SWITCHER */}
-            {activePortalTab === 'overview' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
+            {(activePortalTab === 'overview' || activePortalTab === 'students' || activePortalTab === 'courses') && 
+             (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
               <AdminPortal 
                 activeRole={activeUser.role as any}
                 currentUser={activeUser}
                 onRefreshAllData={handleRefreshAllData}
+                onOpenProfile={handleOpenProfileModal}
+                onNavigate={(tab) => setActivePortalTab(tab)}
               />
             )}
 
-            {activePortalTab === 'students' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'REVIEWER') && (
-              <AdminPortal 
-                activeRole={activeUser.role as any}
-                currentUser={activeUser}
-                onRefreshAllData={handleRefreshAllData}
-              />
-            )}
-
-            {activePortalTab === 'courses' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'REVIEWER') && (
-              <AdminPortal 
-                activeRole={activeUser.role as any}
-                currentUser={activeUser}
-                onRefreshAllData={handleRefreshAllData}
-              />
-            )}
-
-            {activePortalTab === 'attendance' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER') && activeInstructorProfile && (
+            {(activePortalTab === 'attendance' || activePortalTab === 'assignments') && 
+             (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER') && activeInstructorProfile && (
               <InstructorPortal 
                 instructorUser={activeInstructorProfile}
                 currentUser={activeUser}
                 onRefreshAllData={handleRefreshAllData}
-              />
-            )}
-
-            {activePortalTab === 'assignments' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER') && activeInstructorProfile && (
-              <InstructorPortal 
-                instructorUser={activeInstructorProfile}
-                currentUser={activeUser}
-                onRefreshAllData={handleRefreshAllData}
+                onOpenProfile={handleOpenProfileModal}
               />
             )}
 
@@ -788,25 +925,68 @@ export default function App() {
                 studentUser={activeStudentProfile}
                 currentUser={activeUser}
                 onRefreshAllData={handleRefreshAllData}
-                onNavigateToVerify={(certId) => {
-                  setSelectedVerifyCertId(certId);
-                  setCurrentView('verify');
-                }}
+                onOpenProfile={handleOpenProfileModal}
               />
             )}
 
-            {/* PARENT / GUARDIAN PORTAL RENDER */}
-            {activePortalTab === 'parent' && (
+            {/* PARENT / GUARDIAN PORTAL RENDER - Strict Role Enforcement */}
+            {activePortalTab === 'parent' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'PARENT' || activeUser.role === 'REVIEWER') && (
               <ParentPortal 
                 parentUser={activeUser}
                 onRefreshAllData={handleRefreshAllData}
               />
             )}
 
-            {/* EXAM SESSION & MULTIMEDIA HUB RENDER */}
-            {activePortalTab === 'exam' && (
-              <ExaminationSessionPortal 
+            {activePortalTab === 'media' && (
+              <MediaHubModule currentUser={activeUser} />
+            )}
+
+            {activePortalTab === 'reviews' && (
+              <ReviewsPortal
                 currentUser={activeUser}
+                studentProfile={activeStudentProfile}
+                onRefreshAllData={handleRefreshAllData}
+              />
+            )}
+
+            {activePortalTab === 'exam-announcements' && (
+              <ExamAnnouncementsPortal
+                currentUser={activeUser}
+                studentProfile={activeStudentProfile}
+                onNavigateTab={(tab) => setActivePortalTab(tab)}
+                onRefreshAllData={handleRefreshAllData}
+              />
+            )}
+
+            {activePortalTab === 'exam-registration' && (
+              <ExamRegistrationPortal
+                currentUser={activeUser}
+                studentProfile={activeStudentProfile}
+                onRefreshAllData={handleRefreshAllData}
+              />
+            )}
+
+            {activePortalTab === 'exam-verification' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'ADMIN' || activeUser.role === 'ACADEMIC_ADMIN' || activeUser.role === 'REVIEWER') && (
+              <ExaminationEngineModule
+                mode="MD"
+                currentUser={activeUser}
+                onRefreshAllData={handleRefreshAllData}
+              />
+            )}
+
+            {activePortalTab === 'instructor-exams' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD' || activeUser.role === 'INSTRUCTOR' || activeUser.role === 'ADMIN' || activeUser.role === 'REVIEWER') && (
+              <ExaminationEngineModule
+                mode="INSTRUCTOR"
+                currentUser={activeUser}
+                onRefreshAllData={handleRefreshAllData}
+              />
+            )}
+
+            {activePortalTab === 'exams' && (activeUser.role === 'STUDENT' || activeUser.role === 'ALUMNI') && activeStudentProfile && (
+              <ExaminationEngineModule
+                mode="STUDENT"
+                currentUser={activeUser}
+                studentProfile={activeStudentProfile}
                 onRefreshAllData={handleRefreshAllData}
               />
             )}
@@ -828,9 +1008,22 @@ export default function App() {
               />
             )}
 
-            {activePortalTab === 'settings' && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD') && (
+            {(activePortalTab === 'settings' || activePortalTab === 'front-page') && (activeUser.role === 'SUPER_ADMIN' || activeUser.role === 'MD') && (
               <SettingsAuditPortal 
                 currentUser={activeUser}
+                onRefreshAllData={handleRefreshAllData}
+                initialTab={activePortalTab === 'front-page' ? 'front-page' : 'academy'}
+                onPreviewLanding={() => setCurrentView('landing')}
+              />
+            )}
+
+            {activePortalTab === 'library' && (
+              <LibraryPortal />
+            )}
+
+            {activePortalTab === 'registration' && activeStudentProfile && (
+              <CourseRegistrationPortal 
+                studentUser={activeStudentProfile}
                 onRefreshAllData={handleRefreshAllData}
               />
             )}
@@ -1284,6 +1477,15 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Individual Profile Modal View */}
+      <IndividualProfileModal 
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        target={profileTarget}
+        currentUser={activeUser}
+        onRefreshAllData={handleRefreshAllData}
+      />
 
       {/* DeepSeek V4.1 Flash AI Student Learning Assistant Widget */}
       <StudentAiAssistant 

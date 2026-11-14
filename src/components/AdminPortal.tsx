@@ -10,17 +10,20 @@ import {
   MessageCircle, ExternalLink, Phone
 } from 'lucide-react';
 import { 
-  SwanayaDatabase, Student, Course, Batch, User, Instructor, Semester, Subject, AdmissionApplication, Lead
+  SwanayaDatabase, Student, Course, Batch, User, Instructor, Semester, Subject, AdmissionApplication, Lead, ExamCenter
 } from '../db/mockDb';
 import InstructorAllocation from './InstructorAllocation';
+import { academyService } from '../services/academyService';
 
 interface AdminPortalProps {
   activeRole: 'SUPER_ADMIN' | 'ADMIN' | 'ACADEMIC_ADMIN' | 'MD' | 'REVIEWER';
   currentUser: User;
   onRefreshAllData: () => void;
+  onOpenProfile?: (target: { type: 'STUDENT' | 'INSTRUCTOR' | 'USER'; id: string }) => void;
+  onNavigate?: (tab: string) => void;
 }
 
-export default function AdminPortal({ activeRole, currentUser, onRefreshAllData }: AdminPortalProps) {
+export default function AdminPortal({ activeRole, currentUser, onRefreshAllData, onOpenProfile, onNavigate }: AdminPortalProps) {
   // State from LocalStorage
   const [students, setStudents] = useState<Student[]>(() => SwanayaDatabase.get<Student[]>("students"));
   const [courses, setCourses] = useState<Course[]>(() => SwanayaDatabase.get<Course[]>("courses"));
@@ -30,12 +33,44 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
   const [subjects, setSubjects] = useState<Subject[]>(() => SwanayaDatabase.get<Subject[]>("subjects"));
   const [applications, setApplications] = useState<AdmissionApplication[]>(() => SwanayaDatabase.get<AdmissionApplication[]>("applications"));
 
+  React.useEffect(() => {
+    const loadRealCourses = async () => {
+      const fetched = await academyService.getCourses();
+      if (fetched && fetched.length > 0) {
+        setCourses(fetched as unknown as Course[]);
+      }
+    };
+    loadRealCourses();
+  }, []);
+
   // Batch capacity verification states for student modal
   const [studentModalOverrideConfirmed, setStudentModalOverrideConfirmed] = useState(false);
   const [studentModalCapacityWarning, setStudentModalCapacityWarning] = useState<string | null>(null);
 
   // Navigation Sub-tab within Admin portal
   const [activeSubTab, setActiveSubTab] = useState<string>('registrations');
+
+
+  const handleAddAdmin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    const name = (form.elements.namedItem('adminName') as HTMLInputElement).value;
+    const email = (form.elements.namedItem('adminEmail') as HTMLInputElement).value;
+    const newUser: User = {
+      id: `usr-${Date.now()}`,
+      name,
+      email,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      createdAt: new Date().toISOString().split('T')[0],
+      isVerified: true
+    };
+    const users = SwanayaDatabase.get<User[]>("users");
+    SwanayaDatabase.set("users", [...users, newUser]);
+    onRefreshAllData();
+    alert('Admin added successfully!');
+    form.reset();
+  };
 
   const handleClearPreloadedContent = () => {
     if (window.confirm("Are you sure you want to remove all preloaded content? This will allow you to add fresh subjects, trainers, courses, and registrations.")) {
@@ -299,11 +334,10 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
     setIsCourseModalOpen(true);
   };
 
-  const handleSaveCourse = (e: React.FormEvent) => {
+  const handleSaveCourse = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingCourse) {
-      const updated = courses.map(c => c.id === editingCourse.id ? {
-        ...c,
+    try {
+      const courseData = {
         code: courseForm.code,
         name: courseForm.name,
         description: courseForm.description,
@@ -312,32 +346,26 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
         eligibility: courseForm.eligibility,
         fee: Number(courseForm.fee),
         mode: courseForm.mode,
-        coordinator: courseForm.coordinator
-      } : c);
-      saveCourses(updated);
-      SwanayaDatabase.log(currentUser.email, currentUser.name, "COURSE_UPDATE", `Course: ${courseForm.name}`);
-    } else {
-      const newId = `c-${Date.now()}`;
-      const newCourse: Course = {
-        id: newId,
-        code: courseForm.code,
-        name: courseForm.name,
-        description: courseForm.description,
-        duration: courseForm.duration,
-        level: courseForm.level,
-        eligibility: courseForm.eligibility,
-        fee: Number(courseForm.fee),
-        mode: courseForm.mode,
-        status: 'ACTIVE',
-        thumbnailUrl: '',
         coordinator: courseForm.coordinator,
-        learningObjectives: ["Master practical field frameworks", "Deliver end-to-end industry outputs"],
-        careerOutcomes: ["Industry Practitioner", "Senior Executive"]
+        status: 'ACTIVE'
       };
-      saveCourses([...courses, newCourse]);
-      SwanayaDatabase.log(currentUser.email, currentUser.name, "COURSE_CREATE", `Course: ${courseForm.name}`);
+
+      if (editingCourse) {
+        // For simplicity in this demo, we'll just log or you can add update method to service
+        const updated = courses.map(c => c.id === editingCourse.id ? { ...c, ...courseData } : c);
+        saveCourses(updated as Course[]);
+      } else {
+        const id = await academyService.createCourse(courseData);
+        if (id) {
+          const fetched = await academyService.getCourses();
+          if (fetched) setCourses((fetched as any[]).map(c => ({ ...c, status: c.status || 'ACTIVE' })) as unknown as Course[]);
+        }
+      }
+      setIsCourseModalOpen(false);
+      onRefreshAllData();
+    } catch (err) {
+      alert('Failed to save course.');
     }
-    setIsCourseModalOpen(false);
   };
 
   // Curriculum Build Actions
@@ -467,6 +495,15 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
         </button>
 
         <button 
+          onClick={() => setActiveSubTab('courses')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
+            activeSubTab === 'courses' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Courses & Syllabus
+        </button>
+
+        <button 
           onClick={() => setActiveSubTab('students')}
           className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
             activeSubTab === 'students' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
@@ -476,30 +513,12 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
         </button>
 
         <button 
-          onClick={() => setActiveSubTab('curriculum')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeSubTab === 'curriculum' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Subjects & Curriculum
-        </button>
-
-        <button 
           onClick={() => setActiveSubTab('allocation')}
           className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
             activeSubTab === 'allocation' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
           }`}
         >
-          Trainers & Faculty
-        </button>
-
-        <button 
-          onClick={() => setActiveSubTab('courses')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeSubTab === 'courses' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Courses Directory
+          Faculty
         </button>
 
         {activeRole === 'SUPER_ADMIN' && (
@@ -513,6 +532,62 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
           </button>
         )}
       </div>
+
+      {/* COURSES & SYLLABUS SECTION */}
+      {activeSubTab === 'courses' && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center bg-slate-900/60 border border-slate-800 p-5 rounded-lg">
+            <div>
+              <h3 className="text-base font-serif font-bold text-white">Course Catalog & Mapping</h3>
+              <p className="text-[11px] text-slate-400">Manage academic programs, upload brochures, and map syllabus modules.</p>
+            </div>
+            <button 
+              onClick={() => handleOpenCourseModal(null)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase rounded flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" /> Create Course
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {courses.map(course => (
+              <div key={course.id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+                <div className="flex justify-between items-start">
+                  <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-bold font-mono">
+                    {course.code}
+                  </span>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleOpenCourseModal(course)} className="p-1.5 bg-slate-800 text-slate-400 hover:text-blue-400 rounded"><Edit className="w-3.5 h-3.5" /></button>
+                    <button className="p-1.5 bg-slate-800 text-slate-400 hover:text-rose-400 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">{course.name}</h4>
+                  <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{course.description}</p>
+                </div>
+                <div className="pt-4 border-t border-slate-800 flex justify-between items-center text-[11px] font-mono">
+                  <span className="text-slate-500">{course.duration}</span>
+                  <span className="text-amber-500 font-bold">₹{course.fee.toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+
+      {/* ADMIN ADDITION SUB-TAB (Only for Super Admin) */}
+      {activeRole === 'SUPER_ADMIN' && activeSubTab === 'overview' && (
+        <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-lg mt-4">
+          <h3 className="text-xs font-bold text-slate-300 uppercase mb-4">Add Admin</h3>
+          <form onSubmit={handleAddAdmin} className="space-y-2">
+            <input name="adminName" placeholder="Admin Name" required className="w-full bg-slate-950 p-2 rounded text-xs" />
+            <input name="adminEmail" placeholder="Admin Email" type="email" required className="w-full bg-slate-950 p-2 rounded text-xs" />
+            <button type="submit" className="bg-amber-500 text-black px-4 py-2 rounded text-xs font-bold">Add Admin</button>
+          </form>
+        </div>
+      )}
+
 
       {/* REGISTRATIONS SUB-TAB */}
       {activeSubTab === 'registrations' && (
@@ -636,18 +711,25 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
             {students.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {students.map((st) => (
-                  <div key={st.id} className="p-4 bg-slate-950 border border-slate-800 rounded-lg flex items-start gap-3">
+                  <div 
+                    key={st.id} 
+                    onClick={() => onOpenProfile?.({ type: 'STUDENT', id: st.id })}
+                    className="p-4 bg-slate-950 border border-slate-800 hover:border-amber-500/40 rounded-lg flex items-start gap-3 cursor-pointer transition-colors group"
+                  >
                     <img 
                       src={st.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${st.name}`}
                       alt={st.name} 
-                      className="w-10 h-10 rounded-full bg-slate-900 border border-slate-800 shrink-0"
+                      className="w-10 h-10 rounded-full bg-slate-900 border border-slate-800 shrink-0 group-hover:border-amber-400 transition-colors"
                     />
-                    <div className="space-y-1 min-w-0">
-                      <p className="font-bold text-slate-200 text-xs truncate">{st.name}</p>
+                    <div className="space-y-1 min-w-0 flex-grow">
+                      <p className="font-bold text-slate-200 group-hover:text-amber-300 transition-colors text-xs truncate flex items-center justify-between">
+                        <span>{st.name}</span>
+                        <Eye className="w-3 h-3 text-slate-500 group-hover:text-amber-400" />
+                      </p>
                       <span className="text-[10px] font-mono font-bold text-amber-500 block">{st.studentId}</span>
                       <p className="text-[10px] text-slate-400 truncate">{st.email}</p>
                       <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 inline-block font-mono">
-                        {st.status}
+                        {st.status} · View Profile ↗
                       </span>
                     </div>
                   </div>
@@ -821,9 +903,16 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData 
                             <MessageCircle className="w-3.5 h-3.5" />
                           </a>
                           <button
+                            onClick={() => onOpenProfile?.({ type: 'STUDENT', id: student.id })}
+                            className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded text-amber-300 transition-colors cursor-pointer"
+                            title="View Individual Profile & Digital ID Pass"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
                             onClick={() => handleOpenStudentModal(student)}
                             className="p-1.5 bg-slate-850 hover:bg-slate-800 border border-slate-800 rounded text-amber-400 transition-colors"
-                            title="Edit student profile"
+                            title="Edit student record"
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>

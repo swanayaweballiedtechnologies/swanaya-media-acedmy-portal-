@@ -1,0 +1,438 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account and profile data.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["MD", "STUDENT", "ADMIN", "INSTRUCTOR", "PARENT", "SUPER_ADMIN"] },
+        "avatarUrl": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Educational course offered by the academy.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "duration": { "type": "string" },
+        "fees": { "type": "number" },
+        "brochureUrl": { "type": "string" },
+        "category": { "type": "string" }
+      },
+      "required": ["id", "title"]
+    },
+    "Blog": {
+      "title": "Blog Post",
+      "description": "Content for the academy blog and media hub.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "slug": { "type": "string" },
+        "content": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "contentType": { "type": "string" },
+        "tags": { "type": "array" },
+        "status": { "type": "string", "enum": ["DRAFT", "PUBLISHED"] },
+        "isFeatured": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "content", "authorId", "status"]
+    },
+    "MediaAsset": {
+      "title": "Media Asset",
+      "description": "Uploaded media files like images, videos, and documents.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "type": { "type": "string", "enum": ["IMAGE", "VIDEO", "DOCUMENT"] },
+        "size": { "type": "number" },
+        "uploadedBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "url", "type", "uploadedBy"]
+    },
+    "Registration": {
+      "title": "Course Registration",
+      "description": "Student enrollment in a course with a questionnaire.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "answers": { "type": "object" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "studentId", "courseId"]
+    },
+    "Post": {
+      "title": "Library Post",
+      "description": "Public announcements and brochures.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "type": { "type": "string", "enum": ["BROCHURE", "POST"] },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "type"]
+    },
+    "AuditEntry": {
+      "title": "Audit Ledger Entry",
+      "description": "Log of system events and actions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "event": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "details": { "type": "object" },
+        "actorId": { "type": "string" }
+      },
+      "required": ["id", "event", "timestamp"]
+    },
+    "ExamSession": {
+      "title": "Examination Session",
+      "description": "Scheduled academy examination session open for registration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "subjectCode": { "type": "string" },
+        "subjectName": { "type": "string" },
+        "courseId": { "type": "string" },
+        "scheduledDate": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "passMarks": { "type": "number" },
+        "examFee": { "type": "number" },
+        "registrationDeadline": { "type": "string" },
+        "registrationOpen": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["SCHEDULED", "LIVE", "COMPLETED", "CANCELLED"] },
+        "venue": { "type": "string" }
+      },
+      "required": ["id", "title", "subjectCode", "scheduledDate", "status"]
+    },
+    "ExamRegistration": {
+      "title": "Examination Registration",
+      "description": "Student examination registration and hall ticket issuance record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "examSessionId": { "type": "string" },
+        "examTitle": { "type": "string" },
+        "subjectCode": { "type": "string" },
+        "subjectName": { "type": "string" },
+        "userId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "studentEmail": { "type": "string" },
+        "studentRegisterNo": { "type": "string" },
+        "courseId": { "type": "string" },
+        "courseName": { "type": "string" },
+        "batchId": { "type": "string" },
+        "batchName": { "type": "string" },
+        "examCenterId": { "type": "string" },
+        "examCenterName": { "type": "string" },
+        "registrationDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "hallTicketNo": { "type": "string" },
+        "seatNumber": { "type": "string" },
+        "rejectionReason": { "type": "string" },
+        "approvedBy": { "type": "string" },
+        "approvedAt": { "type": "string" },
+        "feePaid": { "type": "boolean" },
+        "attendanceEligible": { "type": "boolean" }
+      },
+      "required": ["id", "examSessionId", "userId", "studentId", "studentName", "status"]
+    },
+    "Review": {
+      "title": "Academy Review",
+      "description": "Student, alumni, and faculty reviews and star ratings for academy courses and programs.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "courseId": { "type": "string" },
+        "courseName": { "type": "string" },
+        "rating": { "type": "number" },
+        "title": { "type": "string" },
+        "comment": { "type": "string" },
+        "status": { "type": "string", "enum": ["PUBLISHED", "FLAGGED"] },
+        "verifiedStudent": { "type": "boolean" },
+        "helpfulCount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "authorId", "authorName", "courseName", "rating", "title", "comment", "status", "createdAt", "updatedAt"]
+    },
+    "ExamQuestionPaper": {
+      "title": "Examination Question Paper",
+      "description": "Instructor-authored or uploaded examination question paper awaiting or cleared by MD verification.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "subjectCode": { "type": "string" },
+        "subjectName": { "type": "string" },
+        "courseId": { "type": "string" },
+        "courseName": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "passMarks": { "type": "number" },
+        "instructions": { "type": "string" },
+        "paperContent": { "type": "string" },
+        "paperFileName": { "type": "string" },
+        "paperFileType": { "type": "string" },
+        "paperFileDataUrl": { "type": "string" },
+        "createdById": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "mdVerificationStatus": { "type": "string", "enum": ["PENDING_MD", "VERIFIED", "REJECTED"] },
+        "mdVerifiedBy": { "type": "string" },
+        "mdVerifiedAt": { "type": "string" },
+        "mdRemarks": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "subjectCode", "courseName", "totalMarks", "passMarks", "createdById", "mdVerificationStatus", "createdAt", "updatedAt"]
+    },
+    "McqExam": {
+      "title": "MCQ Examination",
+      "description": "Online multiple-choice examination authored by instructors and verified by MD.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "subjectCode": { "type": "string" },
+        "subjectName": { "type": "string" },
+        "courseId": { "type": "string" },
+        "courseName": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "totalMarks": { "type": "number" },
+        "passMarks": { "type": "number" },
+        "questions": { "type": "array" },
+        "createdById": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "mdVerificationStatus": { "type": "string", "enum": ["PENDING_MD", "VERIFIED", "REJECTED"] },
+        "mdVerifiedBy": { "type": "string" },
+        "mdVerifiedAt": { "type": "string" },
+        "mdRemarks": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "subjectCode", "courseName", "durationMinutes", "totalMarks", "passMarks", "questions", "createdById", "mdVerificationStatus", "createdAt", "updatedAt"]
+    },
+    "ExamSubmission": {
+      "title": "Student Exam Submission & Answerbook",
+      "description": "Student uploaded answerbook or MCQ attempt with instructor evaluation and MD verification.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "mode": { "type": "string", "enum": ["ANSWERBOOK", "MCQ"] },
+        "examRefId": { "type": "string" },
+        "examTitle": { "type": "string" },
+        "subjectCode": { "type": "string" },
+        "userId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "studentRegisterNo": { "type": "string" },
+        "answerNotes": { "type": "string" },
+        "answerFileName": { "type": "string" },
+        "answerFileType": { "type": "string" },
+        "answerFileDataUrl": { "type": "string" },
+        "mcqAnswers": { "type": "object" },
+        "autoScore": { "type": "number" },
+        "maxMarks": { "type": "number" },
+        "passMarks": { "type": "number" },
+        "marksObtained": { "type": "number" },
+        "grade": { "type": "string" },
+        "pass": { "type": "boolean" },
+        "evaluationStatus": { "type": "string", "enum": ["SUBMITTED", "INSTRUCTOR_EVALUATED", "MD_VERIFIED", "RETURNED"] },
+        "evaluatorId": { "type": "string" },
+        "evaluatorName": { "type": "string" },
+        "evaluatorRemarks": { "type": "string" },
+        "evaluatedAt": { "type": "string" },
+        "mdVerifiedBy": { "type": "string" },
+        "mdVerifiedAt": { "type": "string" },
+        "mdVerificationRemarks": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "mode", "examRefId", "examTitle", "userId", "studentId", "studentName", "maxMarks", "evaluationStatus", "submittedAt", "updatedAt"]
+    },
+    "ExamAnnouncement": {
+      "title": "Examination Announcement",
+      "description": "Official examination circular, schedule notice, and priority alert published by MD, Admin, or Instructors.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "examType": { "type": "string", "enum": ["SEMESTER_FINAL", "MID_TERM", "MCQ_ASSESSMENT", "PRACTICAL_JURY", "RE_EXAM"] },
+        "subjectCode": { "type": "string" },
+        "subjectName": { "type": "string" },
+        "courseId": { "type": "string" },
+        "courseName": { "type": "string" },
+        "batchId": { "type": "string" },
+        "date": { "type": "string" },
+        "examDate": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "venue": { "type": "string" },
+        "deliveryMode": { "type": "string", "enum": ["ONLINE_PORTAL", "CAMPUS_CENTER", "HYBRID"] },
+        "registrationDeadline": { "type": "string" },
+        "instructions": { "type": "string" },
+        "pdfUrl": { "type": "string" },
+        "youtubeUrl": { "type": "string" },
+        "urgent": { "type": "boolean" },
+        "active": { "type": "boolean" },
+        "approvalStatus": { "type": "string", "enum": ["OFFICIAL", "PENDING_MD", "ARCHIVED"] },
+        "createdById": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdByRole": { "type": "string" },
+        "verifiedBy": { "type": "string" },
+        "verifiedAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "examDate", "urgent", "active", "approvalStatus", "createdById", "createdAt", "updatedAt"]
+    },
+    "FrontPageConfig": {
+      "title": "Public Front Page Configuration",
+      "description": "Editable copy, highlights, testimonials, visibility toggles, and footer contact settings for the public landing page.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "faviconUrl": { "type": "string" },
+        "brandLogoUrl": { "type": "string" },
+        "brandWordmark": { "type": "string" },
+        "brandSubtitle": { "type": "string" },
+        "portalButtonLabel": { "type": "string" },
+        "heroEyebrow": { "type": "string" },
+        "heroHeadlinePrefix": { "type": "string" },
+        "heroHeadlineHighlight": { "type": "string" },
+        "heroHeadlineSuffix": { "type": "string" },
+        "heroDescription": { "type": "string" },
+        "heroPrimaryCta": { "type": "string" },
+        "heroSecondaryCta": { "type": "string" },
+        "cohortCardTitle": { "type": "string" },
+        "cohortLocationLabel": { "type": "string" },
+        "cohortItems": { "type": "array" },
+        "programsEyebrow": { "type": "string" },
+        "programsTitle": { "type": "string" },
+        "programsSubtitle": { "type": "string" },
+        "philosophyEyebrow": { "type": "string" },
+        "philosophyTitle": { "type": "string" },
+        "philosophyDescription": { "type": "string" },
+        "philosophyPillars": { "type": "array" },
+        "testimonialQuote": { "type": "string" },
+        "testimonialAuthor": { "type": "string" },
+        "testimonialRole": { "type": "string" },
+        "testimonialAvatarUrl": { "type": "string" },
+        "reviewsEyebrow": { "type": "string" },
+        "reviewsTitle": { "type": "string" },
+        "reviewsSubtitle": { "type": "string" },
+        "blogEyebrow": { "type": "string" },
+        "blogTitle": { "type": "string" },
+        "blogSubtitle": { "type": "string" },
+        "admissionsEyebrow": { "type": "string" },
+        "admissionsTitle": { "type": "string" },
+        "admissionsSubtitle": { "type": "string" },
+        "footerBrandTitle": { "type": "string" },
+        "footerDescription": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "contactLocation": { "type": "string" },
+        "copyrightText": { "type": "string" },
+        "showReviewsSection": { "type": "boolean" },
+        "showBlogSection": { "type": "boolean" },
+        "showAdmissionsSection": { "type": "boolean" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["id", "brandWordmark", "heroHeadlinePrefix", "heroDescription", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles."
+    },
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Academy courses."
+    },
+    "/blogs/{id}": {
+      "schema": "Blog",
+      "description": "Blog posts and articles."
+    },
+    "/media_assets/{id}": {
+      "schema": "MediaAsset",
+      "description": "Media files."
+    },
+    "/registrations/{id}": {
+      "schema": "Registration",
+      "description": "Course registrations."
+    },
+    "/library_posts/{id}": {
+      "schema": "Post",
+      "description": "Public library content."
+    },
+    "/audit_ledger/{id}": {
+      "schema": "AuditEntry",
+      "description": "System audit logs."
+    },
+    "/exam_sessions/{sessionId}": {
+      "schema": "ExamSession",
+      "description": "Examination sessions."
+    },
+    "/exam_registrations/{regId}": {
+      "schema": "ExamRegistration",
+      "description": "Student examination registrations."
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Course and academy reviews."
+    },
+    "/exam_question_papers/{paperId}": {
+      "schema": "ExamQuestionPaper",
+      "description": "Examination question papers."
+    },
+    "/mcq_exams/{examId}": {
+      "schema": "McqExam",
+      "description": "MCQ examinations."
+    },
+    "/exam_submissions/{submissionId}": {
+      "schema": "ExamSubmission",
+      "description": "Student answerbooks and MCQ attempts."
+    },
+    "/exam_announcements/{announcementId}": {
+      "schema": "ExamAnnouncement",
+      "description": "Official examination announcements and circulars."
+    },
+    "/site_settings/{settingId}": {
+      "schema": "FrontPageConfig",
+      "description": "Public front-page and academy display configuration managed by MD and Admin."
+    }
+  }
+}

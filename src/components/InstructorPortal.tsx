@@ -12,14 +12,17 @@ import {
   SwanayaDatabase, Instructor, Student, Subject, ClassSchedule, 
   AttendanceRecord, Assignment, Submission, Project, Course, Lesson, Batch
 } from '../db/mockDb';
+import ExaminationEngineModule from './ExaminationEngineModule';
+import ExamAnnouncementsPortal from './ExamAnnouncementsPortal';
 
 interface InstructorPortalProps {
   instructorUser: Instructor;
   currentUser: any;
   onRefreshAllData: () => void;
+  onOpenProfile?: (target: { type: 'STUDENT' | 'INSTRUCTOR' | 'USER'; id: string }) => void;
 }
 
-export default function InstructorPortal({ instructorUser, currentUser, onRefreshAllData }: InstructorPortalProps) {
+export default function InstructorPortal({ instructorUser, currentUser, onRefreshAllData, onOpenProfile }: InstructorPortalProps) {
   // Database local states
   const [students, setStudents] = useState<Student[]>(() => SwanayaDatabase.get<Student[]>("students"));
   const [classes, setClasses] = useState<ClassSchedule[]>(() => SwanayaDatabase.get<ClassSchedule[]>("classes"));
@@ -31,7 +34,7 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
   const [lessons, setLessons] = useState<Lesson[]>(() => SwanayaDatabase.get<Lesson[]>("lessons"));
   const [batches] = useState<Batch[]>(() => SwanayaDatabase.get<Batch[]>("batches"));
 
-  const [activeTab, setActiveTab] = useState<'attendance' | 'assignments' | 'projects' | 'uploads'>('attendance');
+  const [activeTab, setActiveTab] = useState<'attendance' | 'assignments' | 'projects' | 'uploads' | 'question-papers' | 'mcq-exams' | 'exam-eval' | 'announcements'>('attendance');
 
   // Attendance states (Hourly tracking added!)
   const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
@@ -295,11 +298,43 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
         </button>
         <button 
           onClick={() => setActiveTab('uploads')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer whitespace-nowrap shrink-0 ${
             activeTab === 'uploads' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
           }`}
         >
           Syllabus PDF Uploads
+        </button>
+        <button 
+          onClick={() => setActiveTab('question-papers')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'question-papers' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Question Papers
+        </button>
+        <button 
+          onClick={() => setActiveTab('mcq-exams')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'mcq-exams' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          MCQ Examinations
+        </button>
+        <button 
+          onClick={() => setActiveTab('exam-eval')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'exam-eval' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Answerbook Evaluation
+        </button>
+        <button 
+          onClick={() => setActiveTab('announcements')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'announcements' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Exam Announcements
         </button>
       </div>
 
@@ -361,14 +396,18 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
             <div className="divide-y divide-slate-850">
               {students.map((st) => (
                 <div key={st.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-3">
+                  <div 
+                    onClick={() => onOpenProfile?.({ type: 'STUDENT', id: st.id })}
+                    className="flex items-center gap-3 cursor-pointer group"
+                    title="View Student Profile"
+                  >
                     <img 
                       src={st.avatarUrl} 
                       alt={st.name} 
-                      className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700" 
+                      className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 group-hover:border-amber-400 transition-colors" 
                     />
                     <div>
-                      <p className="font-bold text-slate-200">{st.name}</p>
+                      <p className="font-bold text-slate-200 group-hover:text-amber-300 transition-colors">{st.name} ↗</p>
                       <p className="text-[10px] text-slate-500 font-mono">ID: {st.studentId} · Prev Rate: {st.attendancePercentage}%</p>
                     </div>
                   </div>
@@ -708,6 +747,30 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
           </div>
 
         </div>
+      )}
+
+      {/* EXAMINATION ENGINE: QUESTION PAPERS, MCQ EXAMS & ANSWERBOOK EVALUATION */}
+      {(activeTab === 'question-papers' || activeTab === 'mcq-exams' || activeTab === 'exam-eval') && (
+        <ExaminationEngineModule
+          mode="INSTRUCTOR"
+          initialSection={
+            activeTab === 'question-papers'
+              ? 'papers'
+              : activeTab === 'mcq-exams'
+              ? 'mcq'
+              : 'evaluations'
+          }
+          currentUser={currentUser}
+          onRefreshAllData={onRefreshAllData}
+        />
+      )}
+
+      {/* EXAMINATION ANNOUNCEMENTS */}
+      {activeTab === 'announcements' && (
+        <ExamAnnouncementsPortal
+          currentUser={currentUser}
+          onRefreshAllData={onRefreshAllData}
+        />
       )}
 
       {/* SELF-ATTENDANCE QR CODE MODAL OVERLAY (New Feature!) */}
