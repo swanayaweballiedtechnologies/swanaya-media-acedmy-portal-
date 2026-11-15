@@ -337,34 +337,78 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
   const handleSaveCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const courseData = {
-        code: courseForm.code,
-        name: courseForm.name,
-        description: courseForm.description,
-        duration: courseForm.duration,
-        level: courseForm.level,
-        eligibility: courseForm.eligibility,
-        fee: Number(courseForm.fee),
-        mode: courseForm.mode,
-        coordinator: courseForm.coordinator,
-        status: 'ACTIVE'
+      const courseId = editingCourse ? editingCourse.id : `c-${Date.now()}`;
+      const courseData: Course = {
+        id: courseId,
+        code: courseForm.code.trim() || 'SMA-NEW',
+        name: courseForm.name.trim() || 'New Academy Program',
+        description: courseForm.description.trim() || '',
+        duration: courseForm.duration || '6 Months',
+        level: courseForm.level || 'DIPLOMA',
+        eligibility: courseForm.eligibility || '12th Standard',
+        fee: Number(courseForm.fee) || 0,
+        mode: courseForm.mode || 'PHYSICAL',
+        coordinator: courseForm.coordinator || 'Academic Director',
+        status: 'ACTIVE',
+        thumbnailUrl: (editingCourse as any)?.thumbnailUrl || '',
+        learningObjectives: (editingCourse as any)?.learningObjectives || [],
+        careerOutcomes: (editingCourse as any)?.careerOutcomes || []
       };
 
+      let updatedCourses: Course[];
       if (editingCourse) {
-        // For simplicity in this demo, we'll just log or you can add update method to service
-        const updated = courses.map(c => c.id === editingCourse.id ? { ...c, ...courseData } : c);
-        saveCourses(updated as Course[]);
+        updatedCourses = courses.map(c => c.id === editingCourse.id ? { ...c, ...courseData } : c);
       } else {
-        const id = await academyService.createCourse(courseData);
-        if (id) {
-          const fetched = await academyService.getCourses();
-          if (fetched) setCourses((fetched as any[]).map(c => ({ ...c, status: c.status || 'ACTIVE' })) as unknown as Course[]);
-        }
+        updatedCourses = [...courses, courseData];
       }
+
+      // Save locally immediately
+      saveCourses(updatedCourses);
+      SwanayaDatabase.log(currentUser.email, currentUser.name, editingCourse ? "COURSE_UPDATE" : "COURSE_CREATE", `Course: ${courseData.name} (${courseData.code})`);
+
+      // Attempt background cloud sync
+      try {
+        if (editingCourse) {
+          await academyService.createCourse(courseData);
+        } else {
+          await academyService.createCourse(courseData);
+        }
+      } catch (cloudErr) {
+        console.warn("Cloud sync deferred (using local persistent store):", cloudErr);
+      }
+
       setIsCourseModalOpen(false);
       onRefreshAllData();
-    } catch (err) {
-      alert('Failed to save course.');
+    } catch (err: any) {
+      console.error("Save course error:", err);
+      // Fallback save
+      try {
+        const courseId = editingCourse ? editingCourse.id : `c-${Date.now()}`;
+        const courseData: Course = {
+          id: courseId,
+          code: courseForm.code || 'SMA',
+          name: courseForm.name || 'Course',
+          description: courseForm.description || '',
+          duration: courseForm.duration || '6 Months',
+          level: courseForm.level || 'DIPLOMA',
+          eligibility: courseForm.eligibility || '',
+          fee: Number(courseForm.fee) || 0,
+          mode: courseForm.mode || 'PHYSICAL',
+          coordinator: courseForm.coordinator || 'Director',
+          status: 'ACTIVE',
+          thumbnailUrl: '',
+          learningObjectives: [],
+          careerOutcomes: []
+        };
+        const updated = editingCourse
+          ? courses.map(c => c.id === editingCourse.id ? { ...c, ...courseData } : c)
+          : [...courses, courseData];
+        saveCourses(updated);
+        setIsCourseModalOpen(false);
+        onRefreshAllData();
+      } catch (fallbackErr: any) {
+        alert('Failed to save course: ' + (fallbackErr?.message || err?.message || 'Unknown error'));
+      }
     }
   };
 

@@ -927,6 +927,9 @@ export class SwanayaDatabase {
 
   static set(key: string, value: any) {
     localStorage.setItem(`sma_${key}`, JSON.stringify(value));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('sma-autosave', { detail: { key, timestamp: new Date().toISOString() } }));
+    }
   }
 
   static log(userEmail: string, userName: string, action: string, entity: string, previousValue?: string, newValue?: string) {

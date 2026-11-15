@@ -47,11 +47,21 @@ import { db, auth } from './firebase';
 import { signOut } from 'firebase/auth';
 
 export default function App() {
-  // Initialize standard local db on boot
+  // Initialize standard local db on boot & auto-save listener
+  const [autoSaveToast, setAutoSaveToast] = useState(false);
+
   useEffect(() => {
     SwanayaDatabase.init();
     const savedFrontPage = SwanayaDatabase.get<FrontPageConfig>('frontPageConfig');
     applyDocumentFavicon(savedFrontPage?.faviconUrl);
+
+    const handleAutoSave = () => {
+      setAutoSaveToast(true);
+      const timer = setTimeout(() => setAutoSaveToast(false), 2500);
+      return () => clearTimeout(timer);
+    };
+    window.addEventListener('sma-autosave', handleAutoSave);
+    return () => window.removeEventListener('sma-autosave', handleAutoSave);
   }, []);
 
   // Application general views
@@ -1626,6 +1636,14 @@ export default function App() {
         studentName={activeUser.name} 
         courseName={activeStudentProfile ? "Digital Media & Web Development" : undefined} 
       />
+
+      {/* Auto-Saved Notification Toast */}
+      {autoSaveToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-500 text-black px-4 py-2 rounded-lg shadow-2xl flex items-center gap-2 text-xs font-bold uppercase tracking-wider animate-bounce">
+          <CheckCircle2 className="w-4 h-4" />
+          <span>✓ Auto-Saved to Database</span>
+        </div>
+      )}
 
     </div>
   );
