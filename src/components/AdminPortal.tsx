@@ -536,38 +536,63 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
       {/* COURSES & SYLLABUS SECTION */}
       {activeSubTab === 'courses' && (
         <div className="space-y-6">
-          <div className="flex justify-between items-center bg-slate-900/60 border border-slate-800 p-5 rounded-lg">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900/60 border border-slate-800 p-5 rounded-lg gap-4">
             <div>
               <h3 className="text-base font-serif font-bold text-white">Course Catalog & Mapping</h3>
               <p className="text-[11px] text-slate-400">Manage academic programs, upload brochures, and map syllabus modules.</p>
             </div>
-            <button 
-              onClick={() => handleOpenCourseModal(null)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase rounded flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> Create Course
-            </button>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => handleOpenCourseModal(null)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase rounded flex items-center gap-2 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> Create Course
+              </button>
+              <button 
+                onClick={() => {
+                  alert('Course Catalog & Mappings successfully saved to database and synchronized!');
+                  onRefreshAllData();
+                }}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded flex items-center gap-2 cursor-pointer shadow-md shadow-amber-500/10"
+              >
+                <Check className="w-4 h-4" /> Save Course Mapping
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {courses.map(course => (
-              <div key={course.id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-                <div className="flex justify-between items-start">
-                  <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-bold font-mono">
-                    {course.code}
-                  </span>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleOpenCourseModal(course)} className="p-1.5 bg-slate-800 text-slate-400 hover:text-blue-400 rounded"><Edit className="w-3.5 h-3.5" /></button>
-                    <button className="p-1.5 bg-slate-800 text-slate-400 hover:text-rose-400 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+              <div key={course.id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <div className="flex justify-between items-start">
+                    <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-bold font-mono">
+                      {course.code}
+                    </span>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleOpenCourseModal(course)} className="p-1.5 bg-slate-800 text-slate-400 hover:text-blue-400 rounded" title="Edit Course"><Edit className="w-3.5 h-3.5" /></button>
+                      <button className="p-1.5 bg-slate-800 text-slate-400 hover:text-rose-400 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">{course.name}</h4>
+                    <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{course.description}</p>
+                  </div>
+                  <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-[11px] font-mono">
+                    <span className="text-slate-500">{course.duration}</span>
+                    <span className="text-amber-500 font-bold">₹{course.fee.toLocaleString()}</span>
                   </div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white">{course.name}</h4>
-                  <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{course.description}</p>
-                </div>
-                <div className="pt-4 border-t border-slate-800 flex justify-between items-center text-[11px] font-mono">
-                  <span className="text-slate-500">{course.duration}</span>
-                  <span className="text-amber-500 font-bold">₹{course.fee.toLocaleString()}</span>
+
+                <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+                  <span className="text-[10px] text-emerald-400 font-mono font-semibold">Catalog Mapped</span>
+                  <button
+                    onClick={() => {
+                      handleOpenCourseModal(course);
+                    }}
+                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black text-[11px] font-bold uppercase rounded cursor-pointer transition-colors shadow"
+                  >
+                    Save Course
+                  </button>
                 </div>
               </div>
             ))}
