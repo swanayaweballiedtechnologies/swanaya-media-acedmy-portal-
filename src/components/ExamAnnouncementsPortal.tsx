@@ -7,10 +7,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Megaphone, Calendar, Clock, MapPin, Plus, Search, CheckCircle2,
   AlertCircle, ShieldCheck, Edit3, Trash2, Archive, FileText, Video,
-  X, Send, ArrowRight, BellRing, Eye
+  X, Send, ArrowRight, BellRing, Eye, Users, Save
 } from 'lucide-react';
 import {
-  SwanayaDatabase, User, Student, Course, ExamAnnouncement, Notification
+  SwanayaDatabase, User, Student, Course, Batch, ExamAnnouncement, Notification
 } from '../db/mockDb';
 import { academyService } from '../services/academyService';
 import { auth } from '../firebase';
@@ -39,15 +39,15 @@ const DELIVERY_MODE_LABELS: Record<NonNullable<ExamAnnouncement['deliveryMode']>
 
 export default function ExamAnnouncementsPortal({
   currentUser,
-  studentProfile,
   onNavigateTab,
   onRefreshAllData,
 }: ExamAnnouncementsPortalProps) {
   const { user: firebaseUser } = useAuth();
   const courses = useMemo(() => SwanayaDatabase.get<Course[]>('courses') || [], []);
+  const batches = useMemo(() => SwanayaDatabase.get<Batch[]>('batches') || [], []);
 
-  const isMdOrAdmin = ['MD', 'PRINCIPAL', 'SUPER_ADMIN'].includes(currentUser.role);
-  const isPublisher = isMdOrAdmin;
+  const isMdOrPrincipal = ['MD', 'PRINCIPAL', 'SUPER_ADMIN'].includes(currentUser.role);
+  const isPublisher = isMdOrPrincipal;
   const isStudentOrAlumni = false;
 
   const [announcements, setAnnouncements] = useState<ExamAnnouncement[]>(() => {
@@ -58,15 +58,15 @@ export default function ExamAnnouncementsPortal({
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [filterMode, setFilterMode] = useState<
-    'ALL' | 'URGENT' | 'SEMESTER_FINAL' | 'MCQ_ASSESSMENT' | 'PENDING_MD' | 'ARCHIVED'
+    'ALL' | 'OFFICIAL' | 'DRAFT' | 'URGENT' | 'SEMESTER_FINAL' | 'MCQ_ASSESSMENT' | 'ARCHIVED'
   >('ALL');
   const [courseFilter, setCourseFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Composer Modal State
-  const [isComposerOpen, setIsComposerOpen] = useState(false);
+  // Inline Composer Form State (open by default for MD & Principal)
+  const [isComposerOpen, setIsComposerOpen] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [savingMode, setSavingMode] = useState<'DRAFT' | 'OFFICIAL' | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [viewingAnnouncement, setViewingAnnouncement] = useState<ExamAnnouncement | null>(null);
 
@@ -79,6 +79,8 @@ export default function ExamAnnouncementsPortal({
     subjectCode: '',
     subjectName: '',
     courseId: 'ALL',
+    batchId: 'ALL',
+    customBatchName: '',
     examDate: defaultExamDate,
     startTime: '10:00',
     endTime: '13:00',
@@ -91,23 +93,29 @@ export default function ExamAnnouncementsPortal({
     pdfUrl: '',
     youtubeUrl: '',
     urgent: false,
-    active: true,
   });
 
-  const canQueryAllInCloud = Boolean(firebaseUser && auth.currentUser && isMdOrAdmin);
+  const canQueryAllInCloud = Boolean(firebaseUser && auth.currentUser && isMdOrPrincipal);
+
+  const availableBatchesForForm = useMemo(() => {
+    if (form.courseId === 'ALL') return batches;
+    return batches.filter((b) => b.courseId === form.courseId);
+  }, [batches, form.courseId]);
 
   const syncAnnouncements = async () => {
     setLoading(true);
     try {
       const localList = SwanayaDatabase.get<ExamAnnouncement[]>('examAnnouncements') || [];
       let cloudList: ExamAnnouncement[] = [];
-      try {
-        const fetched = await academyService.getExamAnnouncements(false);
-        if (Array.isArray(fetched)) {
-          cloudList = fetched as ExamAnnouncement[];
+      if (auth.currentUser && isMdOrPrincipal) {
+        try {
+          const fetched = await academyService.getExamAnnouncements(false);
+          if (Array.isArray(fetched)) {
+            cloudList = fetched as ExamAnnouncement[];
+          }
+        } catch {
+          // Local-first fallback when offline or Firebase user lacks executive doc role
         }
-      } catch {
-        // Local-first fallback when offline or unauthenticated in Firebase
       }
 
       const map = new Map<string, ExamAnnouncement>();
@@ -144,6 +152,8 @@ export default function ExamAnnouncementsPortal({
       subjectCode: '',
       subjectName: '',
       courseId: 'ALL',
+      batchId: 'ALL',
+      customBatchName: '',
       examDate: defaultExamDate,
       startTime: '10:00',
       endTime: '13:00',
@@ -156,17 +166,18 @@ export default function ExamAnnouncementsPortal({
       pdfUrl: '',
       youtubeUrl: '',
       urgent: false,
-      active: true,
     });
   };
 
-  const openCreateModal = () => {
+  const openCreateForm = () => {
     resetForm();
     setNotice(null);
     setIsComposerOpen(true);
   };
 
-  const openEditModal = (ann: ExamAnnouncement) => {
+  const openEditForm = (ann: ExamAnnouncement) => {
+    const matchingBatch = batches.find((b) => b.id === ann.batchId);
+    const isCustomBatch = Boolean(ann.batchId === 'CUSTOM' || (ann.batchName && !matchingBatch && ann.batchId !== 'ALL'));
     setEditingId(ann.id);
     setForm({
       title: ann.title || '',
@@ -174,6 +185,8 @@ export default function ExamAnnouncementsPortal({
       subjectCode: ann.subjectCode || '',
       subjectName: ann.subjectName || '',
       courseId: ann.courseId || 'ALL',
+      batchId: isCustomBatch ? 'CUSTOM' : (ann.batchId || 'ALL'),
+      customBatchName: isCustomBatch ? (ann.batchName || '') : '',
       examDate: ann.examDate || ann.date || defaultExamDate,
       startTime: ann.startTime || '10:00',
       endTime: ann.endTime || '13:00',
@@ -185,7 +198,6 @@ export default function ExamAnnouncementsPortal({
       pdfUrl: ann.pdfUrl || '',
       youtubeUrl: ann.youtubeUrl || '',
       urgent: Boolean(ann.urgent),
-      active: ann.active !== false,
     });
     setNotice(null);
     setIsComposerOpen(true);
@@ -194,8 +206,12 @@ export default function ExamAnnouncementsPortal({
   const broadcastNotification = (ann: ExamAnnouncement) => {
     const existingNotifs = SwanayaDatabase.get<Notification[]>('notifications') || [];
     const createdAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
-    const title = ann.urgent ? `Urgent Announced Exam: ${ann.title}` : `Announced Examination: ${ann.title}`;
-    const message = `${ann.subjectCode ? `${ann.subjectCode} · ` : ''}Scheduled for ${ann.examDate || ann.date}${ann.venue ? ` at ${ann.venue}` : ''}.`;
+    const title = ann.urgent
+      ? `Urgent Announced Exam: ${ann.title}`
+      : `Announced Examination: ${ann.title}`;
+    const batchLabel = ann.batchName ? ` · Batch: ${ann.batchName}` : '';
+    const message = `${ann.subjectCode ? `${ann.subjectCode} · ` : ''}Scheduled for ${ann.examDate || ann.date}${batchLabel}${ann.venue ? ` at ${ann.venue}` : ''}.`;
+
     const mdNotif: Notification = {
       id: `not-exam-ann-md-${Date.now()}`,
       userId: 'usr-md',
@@ -217,14 +233,45 @@ export default function ExamAnnouncementsPortal({
     SwanayaDatabase.set('notifications', [mdNotif, principalNotif, ...existingNotifs]);
   };
 
-  const handleSaveAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const resolveBatchSelection = () => {
+    if (form.batchId === 'CUSTOM') {
+      const cleanName = form.customBatchName.trim();
+      return {
+        batchId: 'CUSTOM',
+        batchName: cleanName || 'Target Batch',
+      };
+    }
+    if (!form.batchId || form.batchId === 'ALL') {
+      return {
+        batchId: 'ALL',
+        batchName: 'All Academy Batches',
+      };
+    }
+    const matched = batches.find((b) => b.id === form.batchId);
+    return {
+      batchId: form.batchId,
+      batchName: matched ? `${matched.name}${matched.code ? ` (${matched.code})` : ''}` : form.batchId,
+    };
+  };
+
+  const saveAnnouncement = async (targetStatus: 'DRAFT' | 'OFFICIAL') => {
     setNotice(null);
 
     const trimmedTitle = form.title.trim();
     const trimmedMessage = form.message.trim();
     if (!trimmedTitle || !trimmedMessage || !form.examDate) {
-      setNotice({ type: 'error', text: 'Please fill in the announcement title, message, and examination date.' });
+      setNotice({
+        type: 'error',
+        text: 'Please provide Exam Title, Exam Date, and Description before saving.',
+      });
+      return;
+    }
+
+    if (form.batchId === 'CUSTOM' && !form.customBatchName.trim()) {
+      setNotice({
+        type: 'error',
+        text: 'Please enter the Target Batch name or choose an existing batch.',
+      });
       return;
     }
 
@@ -233,16 +280,16 @@ export default function ExamAnnouncementsPortal({
       form.courseId === 'ALL'
         ? 'All Academy Programs'
         : selectedCourse?.name || 'Academy Program';
-    const nowIso = new Date().toISOString();
-    const actorUid = firebaseUser?.uid || auth.currentUser?.uid || currentUser.id;
-    const approvalStatus: ExamAnnouncement['approvalStatus'] = !form.active
-      ? 'ARCHIVED'
-      : isMdOrAdmin
-      ? 'OFFICIAL'
-      : 'PENDING_MD';
+    const { batchId, batchName } = resolveBatchSelection();
 
-    setSaving(true);
+    const nowIso = new Date().toISOString();
+    const actorUid = auth.currentUser?.uid || firebaseUser?.uid || currentUser.id;
+    const isPublishing = targetStatus === 'OFFICIAL';
+
+    setSavingMode(targetStatus);
     try {
+      let persistedToCloud = false;
+
       if (editingId) {
         const existing = announcements.find((a) => a.id === editingId);
         const patch: Partial<ExamAnnouncement> = {
@@ -253,6 +300,8 @@ export default function ExamAnnouncementsPortal({
           subjectName: form.subjectName.trim(),
           courseId: form.courseId,
           courseName,
+          batchId,
+          batchName,
           date: form.examDate,
           examDate: form.examDate,
           startTime: form.startTime,
@@ -264,32 +313,41 @@ export default function ExamAnnouncementsPortal({
           pdfUrl: form.pdfUrl.trim(),
           youtubeUrl: form.youtubeUrl.trim(),
           urgent: form.urgent,
-          active: form.active,
-          approvalStatus: isMdOrAdmin
-            ? form.active
-              ? 'OFFICIAL'
-              : 'ARCHIVED'
-            : existing?.approvalStatus || 'PENDING_MD',
-          verifiedBy: isMdOrAdmin ? currentUser.name : existing?.verifiedBy,
-          verifiedAt: isMdOrAdmin ? nowIso : existing?.verifiedAt,
+          active: isPublishing,
+          approvalStatus: targetStatus,
+          ...(isPublishing
+            ? { verifiedBy: currentUser.name, verifiedAt: nowIso }
+            : {}),
           updatedAt: nowIso,
         };
 
         if (auth.currentUser) {
           await academyService.updateExamAnnouncement(editingId, patch);
+          persistedToCloud = true;
         }
 
-        const updated = announcements.map((a) =>
+        const updatedList = announcements.map((a) =>
           a.id === editingId ? { ...a, ...patch } : a
         );
-        persistList(updated);
+        persistList(updatedList);
+        if (isPublishing && existing?.approvalStatus !== 'OFFICIAL') {
+          const merged = updatedList.find((a) => a.id === editingId);
+          if (merged) broadcastNotification(merged);
+        }
+
         SwanayaDatabase.log(
           currentUser.email,
           currentUser.name,
-          'EXAM_ANNOUNCEMENT_UPDATED',
-          `Updated examination notice: ${trimmedTitle}`
+          isPublishing ? 'EXAM_ANNOUNCEMENT_PUBLISHED' : 'EXAM_ANNOUNCEMENT_DRAFTED',
+          `${targetStatus}: ${trimmedTitle} (${batchName} · ${form.examDate})`
         );
-        setNotice({ type: 'success', text: `Examination announcement "${trimmedTitle}" updated.` });
+
+        setNotice({
+          type: 'success',
+          text: isPublishing
+            ? `Examination announcement "${trimmedTitle}" published for ${batchName}${persistedToCloud ? ' and saved to Firestore database.' : '.'}`
+            : `Draft "${trimmedTitle}" updated for ${batchName}${persistedToCloud ? ' and saved to Firestore database.' : '.'}`,
+        });
       } else {
         const annId = `ann-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         const created: ExamAnnouncement = {
@@ -301,6 +359,8 @@ export default function ExamAnnouncementsPortal({
           subjectName: form.subjectName.trim(),
           courseId: form.courseId,
           courseName,
+          batchId,
+          batchName,
           date: form.examDate,
           examDate: form.examDate,
           startTime: form.startTime,
@@ -312,55 +372,57 @@ export default function ExamAnnouncementsPortal({
           pdfUrl: form.pdfUrl.trim(),
           youtubeUrl: form.youtubeUrl.trim(),
           urgent: form.urgent,
-          active: form.active,
-          approvalStatus,
+          active: isPublishing,
+          approvalStatus: targetStatus,
           createdById: actorUid,
           createdByName: currentUser.name,
           createdByRole: currentUser.role,
-          verifiedBy: isMdOrAdmin ? currentUser.name : undefined,
-          verifiedAt: isMdOrAdmin ? nowIso : undefined,
+          ...(isPublishing
+            ? { verifiedBy: currentUser.name, verifiedAt: nowIso }
+            : {}),
           createdAt: nowIso,
           updatedAt: nowIso,
         };
 
         if (auth.currentUser) {
           await academyService.createExamAnnouncement(created);
+          persistedToCloud = true;
         }
 
         persistList([created, ...announcements]);
-        if (approvalStatus === 'OFFICIAL' && created.active) {
+        if (isPublishing) {
           broadcastNotification(created);
         }
+
         SwanayaDatabase.log(
           currentUser.email,
           currentUser.name,
-          'EXAM_ANNOUNCEMENT_PUBLISHED',
-          `${approvalStatus}: ${trimmedTitle} (${form.examDate})`
+          isPublishing ? 'EXAM_ANNOUNCEMENT_PUBLISHED' : 'EXAM_ANNOUNCEMENT_DRAFTED',
+          `${targetStatus}: ${trimmedTitle} (${batchName} · ${form.examDate})`
         );
+
         setNotice({
           type: 'success',
-          text:
-            approvalStatus === 'OFFICIAL'
-              ? `Announced examination "${trimmedTitle}" saved for MD & Principal.`
-              : `Announced examination "${trimmedTitle}" saved and queued for MD verification.`,
+          text: isPublishing
+            ? `Published examination announcement "${trimmedTitle}" for ${batchName}${persistedToCloud ? ' and persisted to database.' : '.'}`
+            : `Saved draft "${trimmedTitle}" for ${batchName}${persistedToCloud ? ' to database.' : '.'}`,
         });
       }
 
-      setIsComposerOpen(false);
       resetForm();
       onRefreshAllData?.();
     } catch (err: any) {
       setNotice({
         type: 'error',
-        text: err?.message || 'Unable to save examination announcement. Please retry.',
+        text: err?.message || 'Unable to persist examination announcement. Please retry.',
       });
     } finally {
-      setSaving(false);
+      setSavingMode(null);
     }
   };
 
-  const handleMdVerifyAnnouncement = async (ann: ExamAnnouncement) => {
-    if (!isMdOrAdmin) return;
+  const handlePublishDraft = async (ann: ExamAnnouncement) => {
+    if (!isMdOrPrincipal) return;
     const nowIso = new Date().toISOString();
     const patch: Partial<ExamAnnouncement> = {
       approvalStatus: 'OFFICIAL',
@@ -369,24 +431,30 @@ export default function ExamAnnouncementsPortal({
       verifiedAt: nowIso,
       updatedAt: nowIso,
     };
-    if (auth.currentUser) {
-      try {
+    try {
+      if (auth.currentUser) {
         await academyService.updateExamAnnouncement(ann.id, patch);
-      } catch {
-        // Fallback if local-only record
       }
+      const updated = announcements.map((a) => (a.id === ann.id ? { ...a, ...patch } : a));
+      persistList(updated);
+      broadcastNotification({ ...ann, ...patch });
+      SwanayaDatabase.log(
+        currentUser.email,
+        currentUser.name,
+        'EXAM_ANNOUNCEMENT_PUBLISHED',
+        `Published draft exam announcement: ${ann.title}`
+      );
+      setNotice({
+        type: 'success',
+        text: `"${ann.title}" published to the official Announced Examination board.`,
+      });
+      onRefreshAllData?.();
+    } catch (err: any) {
+      setNotice({
+        type: 'error',
+        text: err?.message || 'Unable to publish draft to Firestore.',
+      });
     }
-    const updated = announcements.map((a) => (a.id === ann.id ? { ...a, ...patch } : a));
-    persistList(updated);
-    broadcastNotification({ ...ann, ...patch });
-    SwanayaDatabase.log(
-      currentUser.email,
-      currentUser.name,
-      'MD_VERIFY_EXAM_ANNOUNCEMENT',
-      `Verified & broadcast exam notice: ${ann.title}`
-    );
-    setNotice({ type: 'success', text: `"${ann.title}" verified in the Announced Examination ledger.` });
-    onRefreshAllData?.();
   };
 
   const handleToggleUrgent = async (ann: ExamAnnouncement) => {
@@ -405,8 +473,9 @@ export default function ExamAnnouncementsPortal({
   };
 
   const handleToggleArchive = async (ann: ExamAnnouncement) => {
-    if (!isMdOrAdmin) return;
-    const nextActive = !ann.active;
+    if (!isMdOrPrincipal) return;
+    const isCurrentlyArchived = ann.approvalStatus === 'ARCHIVED' || (!ann.active && ann.approvalStatus !== 'DRAFT');
+    const nextActive = isCurrentlyArchived;
     const patch: Partial<ExamAnnouncement> = {
       active: nextActive,
       approvalStatus: nextActive ? 'OFFICIAL' : 'ARCHIVED',
@@ -423,7 +492,7 @@ export default function ExamAnnouncementsPortal({
     setNotice({
       type: 'success',
       text: nextActive
-        ? `"${ann.title}" restored to active announcements.`
+        ? `"${ann.title}" restored and published.`
         : `"${ann.title}" moved to archive.`,
     });
     onRefreshAllData?.();
@@ -439,6 +508,9 @@ export default function ExamAnnouncementsPortal({
     }
     persistList(announcements.filter((a) => a.id !== id));
     setConfirmDeleteId(null);
+    if (editingId === id) {
+      resetForm();
+    }
     setNotice({ type: 'success', text: 'Examination announcement deleted.' });
     onRefreshAllData?.();
   };
@@ -451,13 +523,14 @@ export default function ExamAnnouncementsPortal({
         if (!ann.active || status !== 'OFFICIAL') return false;
       }
 
-      if (filterMode === 'URGENT' && (!ann.urgent || !ann.active)) return false;
+      if (filterMode === 'OFFICIAL' && status !== 'OFFICIAL') return false;
+      if (filterMode === 'DRAFT' && status !== 'DRAFT') return false;
+      if (filterMode === 'URGENT' && (!ann.urgent || status === 'ARCHIVED')) return false;
       if (filterMode === 'SEMESTER_FINAL' && ann.examType !== 'SEMESTER_FINAL') return false;
       if (filterMode === 'MCQ_ASSESSMENT' && ann.examType !== 'MCQ_ASSESSMENT') return false;
-      if (filterMode === 'PENDING_MD' && status !== 'PENDING_MD') return false;
-      if (filterMode === 'ARCHIVED' && (ann.active && status !== 'ARCHIVED')) return false;
+      if (filterMode === 'ARCHIVED' && status !== 'ARCHIVED') return false;
 
-      if (filterMode === 'ALL' && isPublisher && !ann.active) return false;
+      if (filterMode === 'ALL' && status === 'ARCHIVED') return false;
 
       if (courseFilter !== 'ALL') {
         if (ann.courseId && ann.courseId !== 'ALL' && ann.courseId !== courseFilter) {
@@ -470,6 +543,7 @@ export default function ExamAnnouncementsPortal({
         const hit =
           ann.title.toLowerCase().includes(q) ||
           ann.message.toLowerCase().includes(q) ||
+          (ann.batchName || '').toLowerCase().includes(q) ||
           (ann.subjectCode || '').toLowerCase().includes(q) ||
           (ann.subjectName || '').toLowerCase().includes(q) ||
           (ann.courseName || '').toLowerCase().includes(q) ||
@@ -483,21 +557,28 @@ export default function ExamAnnouncementsPortal({
 
   const metrics = useMemo(() => {
     const officialActive = announcements.filter(
-      (a) => a.active && (a.approvalStatus || 'OFFICIAL') === 'OFFICIAL'
+      (a) => (a.approvalStatus || (a.active ? 'OFFICIAL' : 'ARCHIVED')) === 'OFFICIAL'
     );
+    const draftCount = announcements.filter((a) => a.approvalStatus === 'DRAFT').length;
     const urgentCount = officialActive.filter((a) => a.urgent).length;
-    const pendingMdCount = announcements.filter((a) => a.approvalStatus === 'PENDING_MD').length;
     const today = new Date().toISOString().split('T')[0];
     const upcomingCount = officialActive.filter((a) => (a.examDate || a.date) >= today).length;
     return {
       activeTotal: officialActive.length,
+      draftCount,
       urgentCount,
-      pendingMdCount,
       upcomingCount,
     };
   }, [announcements]);
 
-  if (!isMdOrAdmin) {
+  const resolveDisplayBatch = (ann: ExamAnnouncement) => {
+    if (ann.batchName) return ann.batchName;
+    if (!ann.batchId || ann.batchId === 'ALL') return 'All Academy Batches';
+    const found = batches.find((b) => b.id === ann.batchId);
+    return found ? `${found.name}${found.code ? ` (${found.code})` : ''}` : ann.batchId;
+  };
+
+  if (!isMdOrPrincipal) {
     return (
       <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-8 text-center space-y-2">
         <ShieldCheck className="w-8 h-8 text-amber-400 mx-auto" />
@@ -524,26 +605,30 @@ export default function ExamAnnouncementsPortal({
             Announced Examination
           </h2>
           <p className="text-xs text-slate-400 max-w-2xl">
-            Executive register of announced examinations, official schedules, venues, and circulars restricted exclusively to the Managing Director and Principal.
+            Draft, target by batch, and publish official examination announcements for Managing Director and Principal oversight.
           </p>
         </div>
 
-        {isPublisher && (
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs uppercase tracking-wider rounded-lg shadow-lg shadow-amber-500/10 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Announced Examination</span>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            if (isComposerOpen && !editingId) {
+              setIsComposerOpen(false);
+            } else {
+              openCreateForm();
+            }
+          }}
+          className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs uppercase tracking-wider rounded-lg shadow-lg shadow-amber-500/10 flex items-center gap-2 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          <span>{isComposerOpen && !editingId ? 'Hide Announcement Form' : 'New Announcement'}</span>
+        </button>
       </div>
 
       {/* Metrics Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
-          <p className="text-xs text-slate-400">Active Official Circulars</p>
+          <p className="text-xs text-slate-400">Published Announcements</p>
           <p className="text-2xl font-serif font-bold text-white tabular-nums mt-1">
             {metrics.activeTotal}
           </p>
@@ -555,13 +640,9 @@ export default function ExamAnnouncementsPortal({
           </p>
         </div>
         <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
-          <p className="text-xs text-slate-400">
-            {isPublisher ? 'Pending MD Verification / Urgent' : 'Urgent Priority Notices'}
-          </p>
+          <p className="text-xs text-slate-400">Saved Drafts &amp; Urgent</p>
           <p className="text-2xl font-serif font-bold text-amber-400 tabular-nums mt-1">
-            {isPublisher
-              ? `${metrics.pendingMdCount} Pending · ${metrics.urgentCount} Urgent`
-              : metrics.urgentCount}
+            {metrics.draftCount} Drafts · {metrics.urgentCount} Urgent
           </p>
         </div>
       </div>
@@ -594,20 +675,373 @@ export default function ExamAnnouncementsPortal({
         </div>
       )}
 
+      {/* INLINE FORM: Draft & Publish Examination Announcement */}
+      {isComposerOpen && (
+        <section
+          aria-label="Draft and publish examination announcement"
+          className="bg-[#0B0F17] border border-slate-800 rounded-xl overflow-hidden shadow-xl"
+        >
+          <div className="bg-slate-900/80 border-b border-slate-800 px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <Megaphone className="w-4 h-4 text-amber-400" />
+              <div>
+                <h3 className="text-sm font-serif font-bold text-white">
+                  {editingId ? 'Edit Examination Announcement' : 'Draft & Publish Examination Announcement'}
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Save as a draft for later review or publish directly to the executive register.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-md cursor-pointer whitespace-nowrap"
+                >
+                  Clear Edit
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsComposerOpen(false);
+                  resetForm();
+                }}
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-400 hover:text-white cursor-pointer"
+                title="Collapse form"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveAnnouncement('OFFICIAL');
+            }}
+            className="p-6 space-y-5"
+          >
+            {/* Primary 4 Core Fields: Exam Title, Date, Target Batch, Description */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+              <div className="md:col-span-6 space-y-1.5">
+                <label htmlFor="exam-ann-title" className="text-[11px] text-slate-300 uppercase font-semibold tracking-wider block">
+                  Exam Title *
+                </label>
+                <input
+                  id="exam-ann-title"
+                  type="text"
+                  required
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  placeholder="e.g. Semester II Final Examination — November 2026"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs text-white focus:border-amber-400 outline-none"
+                />
+              </div>
+
+              <div className="md:col-span-3 space-y-1.5">
+                <label htmlFor="exam-ann-date" className="text-[11px] text-slate-300 uppercase font-semibold tracking-wider block">
+                  Exam Date *
+                </label>
+                <input
+                  id="exam-ann-date"
+                  type="date"
+                  required
+                  value={form.examDate}
+                  onChange={(e) => setForm({ ...form, examDate: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs text-white font-mono focus:border-amber-400 outline-none"
+                />
+              </div>
+
+              <div className="md:col-span-3 space-y-1.5">
+                <label htmlFor="exam-ann-batch" className="text-[11px] text-slate-300 uppercase font-semibold tracking-wider block">
+                  Target Batch *
+                </label>
+                <select
+                  id="exam-ann-batch"
+                  value={form.batchId}
+                  onChange={(e) => setForm({ ...form, batchId: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs text-white focus:border-amber-400 outline-none cursor-pointer"
+                >
+                  <option value="ALL">All Academy Batches</option>
+                  {availableBatchesForForm.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}{b.code ? ` (${b.code})` : ''}
+                    </option>
+                  ))}
+                  <option value="CUSTOM">Specify Target Batch Name...</option>
+                </select>
+              </div>
+            </div>
+
+            {form.batchId === 'CUSTOM' && (
+              <div className="space-y-1.5">
+                <label htmlFor="exam-ann-custom-batch" className="text-[11px] text-slate-300 uppercase font-semibold tracking-wider block">
+                  Target Batch Name *
+                </label>
+                <input
+                  id="exam-ann-custom-batch"
+                  type="text"
+                  value={form.customBatchName}
+                  onChange={(e) => setForm({ ...form, customBatchName: e.target.value })}
+                  placeholder="e.g. Oct 2026 Morning Batch / ADWD-2026-B1"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs text-white focus:border-amber-400 outline-none"
+                />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label htmlFor="exam-ann-description" className="text-[11px] text-slate-300 uppercase font-semibold tracking-wider block">
+                Description *
+              </label>
+              <textarea
+                id="exam-ann-description"
+                rows={4}
+                required
+                value={form.message}
+                onChange={(e) => setForm({ ...form, message: e.target.value })}
+                placeholder="Enter the examination announcement description, syllabus coverage, evaluation format, and reporting requirements..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2.5 text-xs text-white focus:border-amber-400 outline-none"
+              />
+            </div>
+
+            {/* Secondary Schedule & Metadata Fields */}
+            <div className="pt-2 border-t border-slate-800/80 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Examination Category
+                  </label>
+                  <select
+                    value={form.examType}
+                    onChange={(e) => setForm({ ...form, examType: e.target.value as any })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 outline-none cursor-pointer"
+                  >
+                    {Object.entries(EXAM_TYPE_LABELS).map(([k, label]) => (
+                      <option key={k} value={k}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Target Program
+                  </label>
+                  <select
+                    value={form.courseId}
+                    onChange={(e) => setForm({ ...form, courseId: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 outline-none cursor-pointer"
+                  >
+                    <option value="ALL">All Academy Programs</option>
+                    {courses.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Subject Code
+                  </label>
+                  <input
+                    type="text"
+                    value={form.subjectCode}
+                    onChange={(e) => setForm({ ...form, subjectCode: e.target.value })}
+                    placeholder="e.g. SMA-301"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-amber-400 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Subject Name
+                  </label>
+                  <input
+                    type="text"
+                    value={form.subjectName}
+                    onChange={(e) => setForm({ ...form, subjectName: e.target.value })}
+                    placeholder="e.g. Media Production & AI"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={form.startTime}
+                    onChange={(e) => setForm({ ...form, startTime: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-amber-400 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={form.endTime}
+                    onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-amber-400 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Deadline Date
+                  </label>
+                  <input
+                    type="date"
+                    value={form.registrationDeadline}
+                    onChange={(e) => setForm({ ...form, registrationDeadline: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white font-mono focus:border-amber-400 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Delivery Mode
+                  </label>
+                  <select
+                    value={form.deliveryMode}
+                    onChange={(e) => setForm({ ...form, deliveryMode: e.target.value as any })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 outline-none cursor-pointer"
+                  >
+                    {Object.entries(DELIVERY_MODE_LABELS).map(([k, label]) => (
+                      <option key={k} value={k}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Venue / Desk
+                  </label>
+                  <input
+                    type="text"
+                    value={form.venue}
+                    onChange={(e) => setForm({ ...form, venue: e.target.value })}
+                    placeholder="e.g. Studio Wing A"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Candidate Instructions (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.instructions}
+                    onChange={(e) => setForm({ ...form, instructions: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Circular PDF URL (Optional)
+                  </label>
+                  <input
+                    type="url"
+                    value={form.pdfUrl}
+                    onChange={(e) => setForm({ ...form, pdfUrl: e.target.value })}
+                    placeholder="https://..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 uppercase font-semibold block">
+                    Briefing Video URL (Optional)
+                  </label>
+                  <input
+                    type="url"
+                    value={form.youtubeUrl}
+                    onChange={(e) => setForm({ ...form, youtubeUrl: e.target.value })}
+                    placeholder="https://..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-4">
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={form.urgent}
+                  onChange={(e) => setForm({ ...form, urgent: e.target.checked })}
+                  className="accent-rose-500 cursor-pointer"
+                />
+                <span>Mark as Urgent Priority Exam Alert</span>
+              </label>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                {editingId && (
+                  <button
+                    type="button"
+                    onClick={() => resetForm()}
+                    className="px-4 py-2 bg-slate-900 border border-slate-700 hover:bg-slate-800 rounded-lg text-xs text-slate-300 font-semibold cursor-pointer whitespace-nowrap"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  disabled={savingMode !== null}
+                  onClick={() => saveAnnouncement('DRAFT')}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 text-xs font-semibold rounded-lg inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                >
+                  <Save className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{savingMode === 'DRAFT' ? 'Saving Draft...' : 'Save as Draft'}</span>
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={savingMode !== null}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded-lg inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>
+                    {savingMode === 'OFFICIAL'
+                      ? 'Publishing...'
+                      : editingId
+                      ? 'Update & Publish'
+                      : 'Publish Announcement'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </form>
+        </section>
+      )}
+
       {/* Filter Tabs & Search */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-900/40 border border-slate-800 rounded-xl p-3">
         <div className="flex flex-wrap items-center gap-1.5">
           {[
-            { id: 'ALL', label: 'Active Circulars' },
+            { id: 'ALL', label: 'All Notices' },
+            { id: 'OFFICIAL', label: `Published (${metrics.activeTotal})` },
+            { id: 'DRAFT', label: `Drafts (${metrics.draftCount})` },
             { id: 'URGENT', label: `Urgent (${metrics.urgentCount})` },
             { id: 'SEMESTER_FINAL', label: 'Semester Finals' },
             { id: 'MCQ_ASSESSMENT', label: 'MCQ Exams' },
-            ...(isPublisher
-              ? [
-                  { id: 'PENDING_MD', label: `Pending MD (${metrics.pendingMdCount})` },
-                  { id: 'ARCHIVED', label: 'Archived' },
-                ]
-              : []),
+            { id: 'ARCHIVED', label: 'Archived' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -631,7 +1065,7 @@ export default function ExamAnnouncementsPortal({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search title, subject code, venue..."
+              placeholder="Search title, batch, subject, venue..."
               className="w-full bg-slate-950 border border-slate-800 rounded-md pl-8 pr-3 py-1.5 text-xs text-white focus:border-amber-400 outline-none"
             />
           </div>
@@ -654,7 +1088,7 @@ export default function ExamAnnouncementsPortal({
       {/* Announcements List */}
       {loading && announcements.length === 0 ? (
         <div className="py-12 text-center bg-slate-900/30 border border-slate-800 rounded-xl text-xs text-slate-400">
-          Loading examination circulars...
+          Loading announced examinations...
         </div>
       ) : visibleAnnouncements.length === 0 ? (
         <div className="py-14 px-6 text-center bg-slate-900/30 border border-dashed border-slate-800 rounded-xl space-y-4">
@@ -664,16 +1098,16 @@ export default function ExamAnnouncementsPortal({
               No Announced Examinations Match This View
             </h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Record and review upcoming announced examination dates, schedules, and executive circulars for MD &amp; Principal oversight.
+              Use the announcement form above to draft or publish an upcoming examination date and target batch.
             </p>
           </div>
-          {isPublisher && (
+          {!isComposerOpen && (
             <button
               type="button"
-              onClick={openCreateModal}
+              onClick={openCreateForm}
               className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded-md cursor-pointer"
             >
-              Add Announced Examination
+              Open Announcement Form
             </button>
           )}
         </div>
@@ -687,26 +1121,23 @@ export default function ExamAnnouncementsPortal({
             const deliveryLabel = ann.deliveryMode
               ? DELIVERY_MODE_LABELS[ann.deliveryMode]
               : 'Scheduled Mode';
-            const canEditThis =
-              isMdOrAdmin ||
-              (isPublisher && ann.createdById === (firebaseUser?.uid || auth.currentUser?.uid || currentUser.id));
+            const batchLabel = resolveDisplayBatch(ann);
 
             return (
               <article
                 key={ann.id}
                 className={`bg-slate-900/75 border rounded-xl p-5 space-y-4 transition-colors ${
-                  ann.urgent && ann.active
+                  ann.urgent && status === 'OFFICIAL'
                     ? 'border-rose-500/40'
-                    : status === 'PENDING_MD'
+                    : status === 'DRAFT'
                     ? 'border-amber-500/40'
                     : 'border-slate-800 hover:border-slate-700'
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="space-y-1.5 flex-1 min-w-[260px]">
-                    {/* Clean unboxed metadata row */}
                     <div className="flex flex-wrap items-center gap-2 text-xs">
-                      {ann.urgent && ann.active && (
+                      {ann.urgent && status !== 'ARCHIVED' && (
                         <>
                           <span className="font-semibold text-rose-400 inline-flex items-center gap-1">
                             <BellRing className="w-3.5 h-3.5" />
@@ -719,15 +1150,19 @@ export default function ExamAnnouncementsPortal({
                         className={`font-semibold ${
                           status === 'OFFICIAL'
                             ? 'text-emerald-400'
-                            : status === 'PENDING_MD'
+                            : status === 'DRAFT'
                             ? 'text-amber-400'
+                            : status === 'PENDING_MD'
+                            ? 'text-amber-300'
                             : 'text-slate-400'
                         }`}
                       >
                         {status === 'OFFICIAL'
-                          ? 'MD Verified Official Circular'
+                          ? 'Published Official Circular'
+                          : status === 'DRAFT'
+                          ? 'Saved Draft'
                           : status === 'PENDING_MD'
-                          ? 'Pending MD Verification'
+                          ? 'Pending Verification'
                           : 'Archived Circular'}
                       </span>
                       <span className="text-slate-600" aria-hidden="true">·</span>
@@ -767,7 +1202,7 @@ export default function ExamAnnouncementsPortal({
                   </button>
                 </div>
 
-                {/* Schedule Metadata Grid */}
+                {/* Schedule & Batch Metadata Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-950/70 border border-slate-800/80 rounded-lg p-3.5 text-xs">
                   <div className="flex items-center gap-2 text-slate-300">
                     <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
@@ -775,6 +1210,15 @@ export default function ExamAnnouncementsPortal({
                       <span className="text-[10px] text-slate-500 block uppercase">Exam Date</span>
                       <span className="font-mono tabular-nums font-semibold text-white">
                         {ann.examDate || ann.date}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Users className="w-4 h-4 text-amber-400 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-slate-500 block uppercase">Target Batch</span>
+                      <span className="font-medium text-white truncate block">
+                        {batchLabel}
                       </span>
                     </div>
                   </div>
@@ -796,15 +1240,6 @@ export default function ExamAnnouncementsPortal({
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-slate-300">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <div>
-                      <span className="text-[10px] text-slate-500 block uppercase">Deadline</span>
-                      <span className="font-mono tabular-nums font-semibold text-amber-300">
-                        {ann.registrationDeadline || 'Before Exam Start'}
-                      </span>
-                    </div>
-                  </div>
                 </div>
 
                 <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-line">
@@ -822,7 +1257,7 @@ export default function ExamAnnouncementsPortal({
                         className="text-amber-400 hover:text-amber-300 font-medium inline-flex items-center gap-1.5"
                       >
                         <FileText className="w-3.5 h-3.5" />
-                        <span>Download Schedule / Circular PDF</span>
+                        <span>Schedule PDF</span>
                       </a>
                     )}
                     {ann.youtubeUrl && (
@@ -838,397 +1273,96 @@ export default function ExamAnnouncementsPortal({
                     )}
                     {ann.createdByName && (
                       <span className="text-slate-500">
-                        Issued by {ann.createdByName}
-                        {ann.verifiedBy ? ` · Verified by ${ann.verifiedBy}` : ''}
+                        {status === 'DRAFT' ? 'Drafted by ' : 'Published by '}
+                        {ann.createdByName}
+                        {ann.verifiedBy && status === 'OFFICIAL' ? ` · Verified by ${ann.verifiedBy}` : ''}
                       </span>
                     )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
                     {isStudentOrAlumni && onNavigateTab && ann.active && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => onNavigateTab('exams')}
-                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded-md inline-flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <span>Exams &amp; Answerbooks</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onNavigateTab('exam-registration')}
-                          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-md border border-slate-700 cursor-pointer"
-                        >
-                          Exam Registration
-                        </button>
-                      </>
-                    )}
-
-                    {isMdOrAdmin && status === 'PENDING_MD' && (
                       <button
                         type="button"
-                        onClick={() => handleMdVerifyAnnouncement(ann)}
-                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase rounded-md inline-flex items-center gap-1.5 cursor-pointer"
+                        onClick={() => onNavigateTab('exams')}
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded-md inline-flex items-center gap-1.5 cursor-pointer"
                       >
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>Verify &amp; Broadcast</span>
+                        <span>Open Exams</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     )}
 
-                    {isPublisher && (
+                    {(status === 'DRAFT' || status === 'PENDING_MD') && (
                       <button
                         type="button"
-                        onClick={() => handleToggleUrgent(ann)}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-md border border-slate-700 cursor-pointer"
+                        onClick={() => handlePublishDraft(ann)}
+                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase rounded-md inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                       >
-                        {ann.urgent ? 'Clear Urgent' : 'Mark Urgent'}
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Publish Announcement</span>
                       </button>
                     )}
 
-                    {canEditThis && (
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(ann)}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-md border border-slate-700 inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Edit</span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleUrgent(ann)}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-md border border-slate-700 cursor-pointer whitespace-nowrap"
+                    >
+                      {ann.urgent ? 'Clear Urgent' : 'Mark Urgent'}
+                    </button>
 
-                    {isMdOrAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => openEditForm(ann)}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-md border border-slate-700 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Edit</span>
+                    </button>
+
+                    {status !== 'DRAFT' && (
                       <button
                         type="button"
                         onClick={() => handleToggleArchive(ann)}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-md border border-slate-700 inline-flex items-center gap-1 cursor-pointer"
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-md border border-slate-700 inline-flex items-center gap-1 cursor-pointer whitespace-nowrap"
                       >
                         <Archive className="w-3.5 h-3.5" />
-                        <span>{ann.active ? 'Archive' : 'Re-publish'}</span>
+                        <span>{status === 'ARCHIVED' ? 'Re-publish' : 'Archive'}</span>
                       </button>
                     )}
 
-                    {canEditThis && (
-                      confirmDeleteId === ann.id ? (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteAnnouncement(ann.id)}
-                            className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded cursor-pointer"
-                          >
-                            Confirm Delete
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="px-2.5 py-1.5 bg-slate-800 text-slate-300 text-xs rounded cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
+                    {confirmDeleteId === ann.id ? (
+                      <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={() => setConfirmDeleteId(ann.id)}
-                          className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-md border border-slate-700 cursor-pointer"
-                          title="Delete announcement"
+                          onClick={() => handleDeleteAnnouncement(ann.id)}
+                          className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded cursor-pointer whitespace-nowrap"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          Confirm Delete
                         </button>
-                      )
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="px-2.5 py-1.5 bg-slate-800 text-slate-300 text-xs rounded cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(ann.id)}
+                        className="p-1.5 bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 rounded-md border border-slate-700 cursor-pointer"
+                        title="Delete announcement"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     )}
                   </div>
                 </div>
               </article>
             );
           })}
-        </div>
-      )}
-
-      {/* MODAL: Announce / Edit Examination */}
-      {isComposerOpen && isPublisher && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0B0F17] border border-slate-800 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="bg-slate-900/90 border-b border-slate-800 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-              <div className="flex items-center gap-2">
-                <Megaphone className="w-5 h-5 text-amber-400" />
-                <h3 className="text-base font-serif font-bold text-white">
-                  {editingId ? 'Edit Announced Examination' : 'Add Announced Examination'}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsComposerOpen(false);
-                  resetForm();
-                }}
-                className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveAnnouncement} className="p-6 space-y-4">
-              <div className="space-y-1">
-                <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                  Announcement Headline *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="e.g. Semester II Final Examination Schedule — November 2026"
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Examination Category
-                  </label>
-                  <select
-                    value={form.examType}
-                    onChange={(e) => setForm({ ...form, examType: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:border-amber-400 outline-none cursor-pointer"
-                  >
-                    {Object.entries(EXAM_TYPE_LABELS).map(([k, label]) => (
-                      <option key={k} value={k}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Target Program
-                  </label>
-                  <select
-                    value={form.courseId}
-                    onChange={(e) => setForm({ ...form, courseId: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:border-amber-400 outline-none cursor-pointer"
-                  >
-                    <option value="ALL">All Academy Programs</option>
-                    {courses.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Subject Code
-                  </label>
-                  <input
-                    type="text"
-                    value={form.subjectCode}
-                    onChange={(e) => setForm({ ...form, subjectCode: e.target.value })}
-                    placeholder="e.g. SMA-301"
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white font-mono focus:border-amber-400 outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Subject Name
-                  </label>
-                  <input
-                    type="text"
-                    value={form.subjectName}
-                    onChange={(e) => setForm({ ...form, subjectName: e.target.value })}
-                    placeholder="e.g. Media Production & AI Systems"
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Exam Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={form.examDate}
-                    onChange={(e) => setForm({ ...form, examDate: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white font-mono focus:border-amber-400 outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Start Time
-                  </label>
-                  <input
-                    type="time"
-                    value={form.startTime}
-                    onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white font-mono focus:border-amber-400 outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    End Time
-                  </label>
-                  <input
-                    type="time"
-                    value={form.endTime}
-                    onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white font-mono focus:border-amber-400 outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Deadline Date
-                  </label>
-                  <input
-                    type="date"
-                    value={form.registrationDeadline}
-                    onChange={(e) => setForm({ ...form, registrationDeadline: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white font-mono focus:border-amber-400 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Delivery Mode
-                  </label>
-                  <select
-                    value={form.deliveryMode}
-                    onChange={(e) => setForm({ ...form, deliveryMode: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:border-amber-400 outline-none cursor-pointer"
-                  >
-                    {Object.entries(DELIVERY_MODE_LABELS).map(([k, label]) => (
-                      <option key={k} value={k}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Venue / Examination Desk
-                  </label>
-                  <input
-                    type="text"
-                    value={form.venue}
-                    onChange={(e) => setForm({ ...form, venue: e.target.value })}
-                    placeholder="e.g. Studio Wing A / Online Exam Portal"
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                  Official Circular Message *
-                </label>
-                <textarea
-                  rows={4}
-                  required
-                  value={form.message}
-                  onChange={(e) => setForm({ ...form, message: e.target.value })}
-                  placeholder="Write the official examination announcement details, syllabus scope, and answerbook / MCQ instructions..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                  Candidate Guidelines &amp; Instructions
-                </label>
-                <textarea
-                  rows={2}
-                  value={form.instructions}
-                  onChange={(e) => setForm({ ...form, instructions: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Circular / Timetable PDF Link (Optional)
-                  </label>
-                  <input
-                    type="url"
-                    value={form.pdfUrl}
-                    onChange={(e) => setForm({ ...form, pdfUrl: e.target.value })}
-                    placeholder="https://..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-slate-400 uppercase font-semibold">
-                    Briefing Video URL (Optional)
-                  </label>
-                  <input
-                    type="url"
-                    value={form.youtubeUrl}
-                    onChange={(e) => setForm({ ...form, youtubeUrl: e.target.value })}
-                    placeholder="https://..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-white focus:border-amber-400 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-4 pt-1">
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-200">
-                  <input
-                    type="checkbox"
-                    checked={form.urgent}
-                    onChange={(e) => setForm({ ...form, urgent: e.target.checked })}
-                    className="accent-rose-500 cursor-pointer"
-                  />
-                  <span>Mark as Urgent Priority Exam Alert</span>
-                </label>
-
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-200">
-                  <input
-                    type="checkbox"
-                    checked={form.active}
-                    onChange={(e) => setForm({ ...form, active: e.target.checked })}
-                    className="accent-amber-500 cursor-pointer"
-                  />
-                  <span>Active Announced Examination Record</span>
-                </label>
-              </div>
-
-              <div className="pt-3 border-t border-slate-800 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsComposerOpen(false);
-                    resetForm();
-                  }}
-                  className="px-4 py-2 bg-slate-900 border border-slate-700 rounded text-xs text-slate-300 font-semibold cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>
-                    {saving
-                      ? 'Saving...'
-                      : editingId
-                      ? 'Save Changes'
-                      : 'Save Announced Examination'}
-                  </span>
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
 
@@ -1239,7 +1373,7 @@ export default function ExamAnnouncementsPortal({
             <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-4">
               <div className="space-y-1">
                 <p className="text-[11px] font-mono text-amber-400 uppercase tracking-wider">
-                  Swanaya Media Academy · Examination Circular
+                  Swanaya Media Academy · Announced Examination
                 </p>
                 <h3 className="text-lg font-serif font-bold text-white">
                   {viewingAnnouncement.title}
@@ -1262,29 +1396,28 @@ export default function ExamAnnouncementsPortal({
                 </span>
               </div>
               <div>
+                <span className="text-slate-500 block">Target Batch</span>
+                <span className="font-semibold text-amber-400">
+                  {resolveDisplayBatch(viewingAnnouncement)}
+                </span>
+              </div>
+              <div>
                 <span className="text-slate-500 block">Time Window</span>
-                <span className="font-mono font-bold text-amber-400">
+                <span className="font-mono font-bold text-white">
                   {viewingAnnouncement.startTime || '10:00'} – {viewingAnnouncement.endTime || '13:00'}
                 </span>
               </div>
               <div>
-                <span className="text-slate-500 block">Program / Subject</span>
+                <span className="text-slate-500 block">Program / Venue</span>
                 <span className="text-slate-200">
-                  {viewingAnnouncement.courseName || 'All Programs'}
-                  {viewingAnnouncement.subjectCode ? ` · ${viewingAnnouncement.subjectCode}` : ''}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 block">Venue / Mode</span>
-                <span className="text-slate-200">
-                  {viewingAnnouncement.venue || 'Online Exam Portal'}
+                  {viewingAnnouncement.courseName || 'All Programs'} · {viewingAnnouncement.venue || 'Online Portal'}
                 </span>
               </div>
             </div>
 
             <div className="space-y-2">
               <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Announcement Circular
+                Announcement Description
               </h4>
               <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-line">
                 {viewingAnnouncement.message}

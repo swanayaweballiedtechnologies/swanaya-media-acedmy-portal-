@@ -261,7 +261,7 @@ service cloud.firestore {
 
     function isValidExamAnnouncement(data) {
       return data.keys().hasAll(['id', 'title', 'message', 'examDate', 'urgent', 'active', 'approvalStatus', 'createdById', 'createdAt', 'updatedAt']) &&
-             data.keys().hasOnly(['id', 'title', 'message', 'examType', 'subjectCode', 'subjectName', 'courseId', 'courseName', 'batchId', 'examId', 'date', 'examDate', 'startTime', 'endTime', 'venue', 'deliveryMode', 'registrationDeadline', 'instructions', 'pdfUrl', 'youtubeUrl', 'urgent', 'active', 'approvalStatus', 'createdById', 'createdByName', 'createdByRole', 'verifiedBy', 'verifiedAt', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['id', 'title', 'message', 'examType', 'subjectCode', 'subjectName', 'courseId', 'courseName', 'batchId', 'batchName', 'examId', 'date', 'examDate', 'startTime', 'endTime', 'venue', 'deliveryMode', 'registrationDeadline', 'instructions', 'pdfUrl', 'youtubeUrl', 'urgent', 'active', 'approvalStatus', 'createdById', 'createdByName', 'createdByRole', 'verifiedBy', 'verifiedAt', 'createdAt', 'updatedAt']) &&
              data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
              data.title is string && data.title.size() > 0 && data.title.size() <= 240 &&
              data.message is string && data.message.size() > 0 && data.message.size() <= 4000 &&
@@ -271,6 +271,7 @@ service cloud.firestore {
              (!('courseId' in data) || (data.courseId is string && data.courseId.size() <= 128)) &&
              (!('courseName' in data) || (data.courseName is string && data.courseName.size() <= 200)) &&
              (!('batchId' in data) || (data.batchId is string && data.batchId.size() <= 128)) &&
+             (!('batchName' in data) || (data.batchName is string && data.batchName.size() <= 160)) &&
              (!('examId' in data) || (data.examId is string && data.examId.size() <= 128)) &&
              (!('date' in data) || (data.date is string && data.date.size() <= 64)) &&
              data.examDate is string && data.examDate.size() > 0 && data.examDate.size() <= 64 &&
@@ -284,7 +285,7 @@ service cloud.firestore {
              (!('youtubeUrl' in data) || (data.youtubeUrl is string && data.youtubeUrl.size() <= 2048)) &&
              data.urgent is bool &&
              data.active is bool &&
-             data.approvalStatus in ['OFFICIAL', 'PENDING_MD', 'ARCHIVED'] &&
+             data.approvalStatus in ['OFFICIAL', 'DRAFT', 'PENDING_MD', 'ARCHIVED'] &&
              data.createdById is string && data.createdById.size() > 0 && data.createdById.size() <= 128 &&
              (!('createdByName' in data) || (data.createdByName is string && data.createdByName.size() <= 150)) &&
              (!('createdByRole' in data) || (data.createdByRole is string && data.createdByRole.size() <= 64)) &&

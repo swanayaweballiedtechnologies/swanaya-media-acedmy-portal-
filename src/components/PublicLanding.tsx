@@ -6,18 +6,23 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BookOpen, Star, CheckCircle2, Phone, Mail, MapPin, Sparkles, Send, 
-  GraduationCap, Code, Video, Globe, Terminal, Calendar, User, ExternalLink, ArrowUpRight, AlertCircle, X, MessageSquarePlus, Film 
+  GraduationCap, Code, Video, Globe, Terminal, Calendar, User, ExternalLink, ArrowUpRight, AlertCircle, X, MessageSquarePlus, Film,
+  Lock, LogIn, Eye, EyeOff, ArrowRight, UserPlus
 } from 'lucide-react';
-import { SwanayaDatabase, Course, AcademyReview, FrontPageConfig, FrontPagePosterItem, INITIAL_FRONT_PAGE_CONFIG, AcademySettings } from '../db/mockDb';
+import { SwanayaDatabase, Course, AcademyReview, FrontPageConfig, FrontPagePosterItem, INITIAL_FRONT_PAGE_CONFIG, AcademySettings, User as SwanayaUser } from '../db/mockDb';
 import { academyService } from '../services/academyService';
 import { auth } from '../firebase';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import VisualCaptcha from './VisualCaptcha';
 import { applyDocumentFavicon } from '../utils/favicon';
 import { parseFrontPageVideoUrl } from '../utils/mediaHelpers';
 
 interface PublicLandingProps {
   onNavigateToPortal: () => void;
+  onNavigateToRegister?: () => void;
   onNavigateToCourseSelection?: (courseId?: string) => void;
+  onLoginSuccess?: (user: SwanayaUser) => void;
+  activeUser?: SwanayaUser | null;
   courses: Course[];
   onApplyLead: (leadData: { name: string; email: string; phone: string; courseId: string; qualification: string; preferredBatch: string; message: string }) => void;
 }
@@ -58,7 +63,15 @@ function mergeFrontPage(partial?: Partial<FrontPageConfig> | null): FrontPageCon
   };
 }
 
-export default function PublicLanding({ onNavigateToPortal, onNavigateToCourseSelection, courses, onApplyLead }: PublicLandingProps) {
+export default function PublicLanding({
+  onNavigateToPortal,
+  onNavigateToRegister,
+  onNavigateToCourseSelection,
+  onLoginSuccess,
+  activeUser,
+  courses,
+  onApplyLead
+}: PublicLandingProps) {
   const [frontPage, setFrontPage] = useState<FrontPageConfig>(() =>
     mergeFrontPage(SwanayaDatabase.get<FrontPageConfig>('frontPageConfig'))
   );
@@ -185,6 +198,81 @@ export default function PublicLanding({ onNavigateToPortal, onNavigateToCourseSe
   const [captchaResetSignal, setCaptchaResetSignal] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Side-position login drawer state
+  const [isSideLoginOpen, setIsSideLoginOpen] = useState(false);
+  const [sideLoginInput, setSideLoginInput] = useState('');
+  const [sidePassword, setSidePassword] = useState('');
+  const [showSidePassword, setShowSidePassword] = useState(false);
+  const [sideLoginError, setSideLoginError] = useState('');
+  const [sideLoginLoading, setSideLoginLoading] = useState(false);
+
+  const handleSideGoogleLogin = async () => {
+    setSideLoginError('');
+    setSideLoginLoading(true);
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+
+      let userProfile = await academyService.getUserProfile(firebaseUser.uid);
+      if (!userProfile) {
+        userProfile = {
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || 'New Scholar',
+          email: firebaseUser.email,
+          role: 'STUDENT',
+          status: 'ACTIVE'
+        };
+        await academyService.createUserProfile(firebaseUser.uid, userProfile);
+      }
+
+      setIsSideLoginOpen(false);
+      if (onLoginSuccess) {
+        onLoginSuccess(userProfile as SwanayaUser);
+      } else {
+        onNavigateToPortal();
+      }
+    } catch (err: any) {
+      setSideLoginError('Google login failed: ' + (err?.message || 'Please try again.'));
+    } finally {
+      setSideLoginLoading(false);
+    }
+  };
+
+  const handleSideCredentialLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSideLoginError('');
+    setSideLoginLoading(true);
+
+    setTimeout(() => {
+      const usersList = SwanayaDatabase.get<SwanayaUser[]>('users') || [];
+      const cleanInput = sideLoginInput.trim().toLowerCase();
+      const found = usersList.find((u) =>
+        (u.username && u.username.toLowerCase() === cleanInput) ||
+        u.email.toLowerCase() === cleanInput ||
+        u.name.toLowerCase() === cleanInput
+      );
+
+      if (found) {
+        if (found.status === 'INACTIVE') {
+          setSideLoginError('This account has been deactivated. Please contact admin.');
+          setSideLoginLoading(false);
+          return;
+        }
+        setSideLoginLoading(false);
+        setIsSideLoginOpen(false);
+        if (onLoginSuccess) {
+          onLoginSuccess(found);
+        } else {
+          onNavigateToPortal();
+        }
+      } else {
+        setSideLoginError('Invalid credentials. Check your username or email address.');
+        setSideLoginLoading(false);
+      }
+    }, 350);
+  };
 
   const handlePublicReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1265,7 +1353,7 @@ export default function PublicLanding({ onNavigateToPortal, onNavigateToCourseSe
                 {frontPage.footerBrandTitle}
               </span>
             </div>
-            <p className="text-slate-500 text-xs leading-relaxed">
+            <p className="text-slate-400 text-xs leading-relaxed whitespace-pre-line">
               {frontPage.footerDescription}
             </p>
           </div>
@@ -1312,6 +1400,211 @@ export default function PublicLanding({ onNavigateToPortal, onNavigateToCourseSe
           </div>
         </div>
       </footer>
+
+      {/* DOCKED SIDE-POSITION LOGIN HANDLE */}
+      <button
+        type="button"
+        onClick={() => {
+          setSideLoginError('');
+          setIsSideLoginOpen(true);
+        }}
+        aria-label="Open Side Login Panel"
+        aria-expanded={isSideLoginOpen}
+        className="fixed right-0 top-1/2 -translate-y-1/2 z-40 flex flex-col items-center gap-2 bg-[#0B0F17]/95 hover:bg-slate-900 border border-r-0 border-amber-500/40 text-amber-300 hover:text-amber-200 px-2.5 py-4 rounded-l-lg shadow-2xl shadow-black/60 backdrop-blur-md transition-colors cursor-pointer"
+      >
+        <LogIn className="w-4 h-4 text-amber-400 shrink-0" />
+        <span className="text-[11px] font-bold uppercase tracking-widest [writing-mode:vertical-rl] rotate-180 whitespace-nowrap">
+          {activeUser ? 'Workspace' : 'Portal Login'}
+        </span>
+      </button>
+
+      {/* RIGHT-SIDE LOGIN DRAWER */}
+      {isSideLoginOpen && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm"
+          onClick={() => setIsSideLoginOpen(false)}
+        >
+          <aside
+            aria-label="Portal Side Login"
+            className="w-full max-w-md h-full bg-[#0B0F17] border-l border-slate-800 shadow-2xl flex flex-col justify-between overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 space-y-6">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-4">
+                <div className="space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">
+                    {frontPage.brandWordmark}
+                  </p>
+                  <h2 className="text-xl font-serif font-bold text-white">
+                    {activeUser ? 'Active Workspace Session' : 'Side Portal Login'}
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    {activeUser
+                      ? 'Continue to your dashboard or switch to another account.'
+                      : 'Sign in with Google or your registered username and password.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSideLoginOpen(false)}
+                  aria-label="Close Side Login Panel"
+                  className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {activeUser ? (
+                <div className="space-y-4 bg-slate-900/60 border border-slate-800 rounded-lg p-5">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={activeUser.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(activeUser.name)}`}
+                      alt={activeUser.name}
+                      referrerPolicy="no-referrer"
+                      className="w-11 h-11 rounded-full border border-slate-700 object-cover bg-slate-950"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{activeUser.name}</p>
+                      <p className="text-xs text-slate-400 truncate">{activeUser.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSideLoginOpen(false);
+                      onNavigateToPortal();
+                    }}
+                    className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Enter Workspace</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <button
+                    type="button"
+                    onClick={handleSideGoogleLogin}
+                    disabled={sideLoginLoading}
+                    className="w-full py-2.5 bg-white hover:bg-slate-100 text-slate-900 font-bold uppercase text-xs tracking-wider rounded transition-colors cursor-pointer shadow flex items-center justify-center gap-3 border border-slate-200 disabled:opacity-50"
+                  >
+                    <img
+                      src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                      alt="Google"
+                      className="w-4 h-4"
+                    />
+                    <span>{sideLoginLoading ? 'Signing in...' : 'Continue with Google'}</span>
+                  </button>
+
+                  <div className="relative flex items-center">
+                    <div className="flex-grow border-t border-slate-800" />
+                    <span className="mx-3 text-[10px] text-slate-500 uppercase font-bold tracking-widest font-mono">
+                      Or Credentials
+                    </span>
+                    <div className="flex-grow border-t border-slate-800" />
+                  </div>
+
+                  <form onSubmit={handleSideCredentialLogin} className="space-y-4">
+                    {sideLoginError && (
+                      <div
+                        role="alert"
+                        className="flex items-center gap-2 text-xs text-rose-400 font-medium bg-rose-500/10 border border-rose-500/20 p-3 rounded"
+                      >
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{sideLoginError}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label htmlFor="side-login-identifier" className="text-[11px] font-semibold uppercase tracking-wider text-slate-300 block">
+                        Username or Email ID
+                      </label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                        <input
+                          id="side-login-identifier"
+                          type="text"
+                          required
+                          value={sideLoginInput}
+                          onChange={(e) => setSideLoginInput(e.target.value)}
+                          placeholder="e.g. aadithyan or email"
+                          className="w-full bg-slate-950 border border-slate-800 rounded pl-9 pr-3 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label htmlFor="side-login-password" className="text-[11px] font-semibold uppercase tracking-wider text-slate-300 block">
+                        Password
+                      </label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                        <input
+                          id="side-login-password"
+                          type={showSidePassword ? 'text' : 'password'}
+                          required
+                          value={sidePassword}
+                          onChange={(e) => setSidePassword(e.target.value)}
+                          placeholder="••••••••"
+                          className="w-full bg-slate-950 border border-slate-800 rounded pl-9 pr-10 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-amber-400 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowSidePassword((prev) => !prev)}
+                          aria-label={showSidePassword ? 'Hide password' : 'Show password'}
+                          className="absolute right-3 top-2 text-slate-500 hover:text-amber-400 transition-colors cursor-pointer p-0.5"
+                        >
+                          {showSidePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={sideLoginLoading}
+                      className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-bold uppercase text-xs tracking-wider rounded transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <span>{sideLoginLoading ? 'Authenticating...' : 'Sign In to Portal'}</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </form>
+
+                  <div className="pt-4 border-t border-slate-800 space-y-2.5">
+                    {onNavigateToRegister && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSideLoginOpen(false);
+                          onNavigateToRegister();
+                        }}
+                        className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold rounded transition-colors flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                      >
+                        <UserPlus className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Create New Account</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSideLoginOpen(false);
+                        onNavigateToPortal();
+                      }}
+                      className="w-full py-2 text-xs font-medium text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+                    >
+                      Open Full Campus Login Page →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-slate-800/80 text-xs text-slate-500 flex items-center justify-between gap-2">
+              <span>{frontPage.contactLocation || academySettings.address}</span>
+              <span className="font-mono text-slate-400">{frontPage.contactPhone || academySettings.phone}</span>
+            </div>
+          </aside>
+        </div>
+      )}
 
     </div>
   );

@@ -681,12 +681,15 @@ export const academyService = {
     try {
       const docRef = annData.id ? doc(db, path, annData.id) : doc(collection(db, path));
       const now = new Date().toISOString();
-      await setDoc(docRef, {
-        ...annData,
-        id: docRef.id,
-        createdAt: annData.createdAt || now,
-        updatedAt: annData.updatedAt || now,
-      });
+      const sanitized = Object.fromEntries(
+        Object.entries({
+          ...annData,
+          id: docRef.id,
+          createdAt: annData.createdAt || now,
+          updatedAt: annData.updatedAt || now,
+        }).filter(([, value]) => value !== undefined)
+      );
+      await setDoc(docRef, sanitized);
       return docRef.id;
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -696,10 +699,13 @@ export const academyService = {
   async updateExamAnnouncement(annId: string, updateData: any) {
     const path = `exam_announcements/${annId}`;
     try {
-      await updateDoc(doc(db, 'exam_announcements', annId), {
-        ...updateData,
-        updatedAt: new Date().toISOString(),
-      });
+      const sanitized = Object.fromEntries(
+        Object.entries({
+          ...updateData,
+          updatedAt: new Date().toISOString(),
+        }).filter(([, value]) => value !== undefined)
+      );
+      await updateDoc(doc(db, 'exam_announcements', annId), sanitized);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
     }

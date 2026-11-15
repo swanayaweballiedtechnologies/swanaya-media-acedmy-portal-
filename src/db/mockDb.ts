@@ -233,6 +233,7 @@ export interface ExamAnnouncement {
   courseId?: string;
   courseName?: string;
   batchId?: string;
+  batchName?: string;
   examId?: string;
   venue?: string;
   deliveryMode?: 'ONLINE_PORTAL' | 'CAMPUS_CENTER' | 'HYBRID';
@@ -241,7 +242,7 @@ export interface ExamAnnouncement {
   pdfUrl?: string;
   youtubeUrl?: string;
   active: boolean;
-  approvalStatus?: 'OFFICIAL' | 'PENDING_MD' | 'ARCHIVED';
+  approvalStatus?: 'OFFICIAL' | 'DRAFT' | 'PENDING_MD' | 'ARCHIVED';
   createdById?: string;
   createdByName?: string;
   createdByRole?: string;
@@ -778,8 +779,8 @@ export const INITIAL_FRONT_PAGE_CONFIG: FrontPageConfig = {
   admissionsEyebrow: "ONLINE APPLICATION",
   admissionsTitle: "Join the Next Cohort",
   admissionsSubtitle: "No complex procedures. Fill in your details and an admission counselor will contact you within 24 hours.",
-  footerBrandTitle: "SWANAYA MEDIA ACADEMY",
-  footerDescription: "Swanaya Media Academy is the official elite training and certification division of Swanaya Media Enterprises. Providing expert corporate readiness in AI, design, and software systems.",
+  footerBrandTitle: "SWANEXA AI",
+  footerDescription: "An EdTech Solution by Swanaya Media Enterprises. SWANEXA AI is an integrated Education Technology platform designed to digitally transform schools, colleges, universities and educational institutions. Combining institutional ERP, Learning Management Systems (LMS), college website development, academic administration and AI-powered solutions, SWANEXA AI provides a unified digital ecosystem for modern education.\n\nTagline: Transforming Education Through Intelligence.\nParent Company: Swanaya Media Enterprises\nIndustry: Education Technology (EdTech)\nBusiness Model: B2B SaaS & Institutional Technology Solutions",
   contactEmail: "academy@swanayamedia.com",
   contactPhone: "+91 94460 00000",
   contactLocation: "Thiruvananthapuram, Kerala",

@@ -262,44 +262,17 @@ export default function AuthGateway({
       return;
     }
 
-    if (!captchaToken) {
-      setError('Please complete the human verification CAPTCHA before continuing.');
-      return;
-    }
-
     setLoading(true);
-    try {
-      const verifyRes = await fetch('/api/registrations/verify-captcha', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ captchaToken, purpose: 'signup' }),
-      });
-      const verifyData = await verifyRes.json();
-
-      if (!verifyRes.ok || !verifyData.valid) {
-        setError(verifyData.error || 'CAPTCHA verification failed. Please complete a fresh challenge.');
-        setCaptchaToken(null);
-        setCaptchaResetSignal((prev) => prev + 1);
-        setLoading(false);
-        return;
-      }
-    } catch {
-      setError('Unable to verify CAPTCHA with the server. Please try again.');
+    setTimeout(() => {
+      // Generate 6-digit OTP code for email verification
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      setGeneratedOtp(otp);
+      setEnteredOtp('');
+      setVerificationError('');
+      setResendNotification(false);
       setLoading(false);
-      return;
-    }
-
-    setCaptchaToken(null);
-    setCaptchaResetSignal((prev) => prev + 1);
-    setLoading(false);
-
-    // Generate 6-digit OTP code
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(otp);
-    setEnteredOtp('');
-    setVerificationError('');
-    setResendNotification(false);
-    setAuthMode('verify');
+      setAuthMode('verify');
+    }, 400);
   };
 
   // Resend OTP Code
@@ -407,7 +380,7 @@ export default function AuthGateway({
   return (
     <div className="min-h-screen bg-[#07090D] text-slate-100 flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
       {/* Top Navigation */}
-      <div className="border-b border-slate-900 bg-[#0A0D14]/90 backdrop-blur-md">
+      <div className="sticky top-0 z-30 border-b border-slate-900 bg-[#0A0D14]/95 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
           <button
             type="button"
@@ -426,12 +399,12 @@ export default function AuthGateway({
         </div>
       </div>
 
-      {/* Main Split Showcase & Gateway */}
-      <div className="flex-1 flex items-center py-8 lg:py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+      {/* Main Split Showcase & Side Login Gateway */}
+      <div className="flex-1 flex items-start py-8 lg:py-10 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto w-full grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-10 items-start">
 
           {/* Left Column: Swanaya Media Academy Campus & Studio Gallery */}
-          <div className="lg:col-span-7 space-y-5">
+          <div className="order-2 md:order-1 md:col-span-6 lg:col-span-7 space-y-5">
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-xs font-medium text-amber-400">
                 <MapPin className="w-3.5 h-3.5 shrink-0" />
@@ -517,9 +490,12 @@ export default function AuthGateway({
             </div>
           </div>
 
-          {/* Right Column: Login & Registration Gateway */}
-          <div className="lg:col-span-5 w-full max-w-md mx-auto lg:max-w-none space-y-5">
-            <div className="space-y-3 text-center lg:text-left">
+          {/* Right Side Column: Sticky Login & Registration Gateway */}
+          <aside
+            aria-label="Portal Login Side Panel"
+            className="order-1 md:order-2 md:col-span-6 lg:col-span-5 w-full max-w-md mx-auto md:max-w-none md:sticky md:top-20 md:border-l md:border-slate-800/70 md:pl-6 lg:pl-8 space-y-5"
+          >
+            <div className="space-y-3 text-left">
               <div className="space-y-1">
                 <h2 className="text-2xl font-serif font-bold text-white tracking-wide">
                   {authMode === 'signin' && 'Enter Academy Workspace'}
@@ -936,18 +912,13 @@ export default function AuthGateway({
                 </div>
               </div>
 
-              <VisualCaptcha
-                purpose="signup"
-                onTokenChange={setCaptchaToken}
-                resetSignal={captchaResetSignal}
-              />
-
               <button 
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 mt-2 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-bold uppercase text-xs tracking-wider rounded transition-all cursor-pointer shadow-md shadow-amber-500/10 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                className="w-full py-3 mt-3 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-bold uppercase text-xs tracking-wider rounded transition-all cursor-pointer shadow-md shadow-amber-500/10 flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {loading ? 'Verifying...' : 'Continue to Email Verification'} <ArrowRight className="w-3.5 h-3.5" />
+                <Mail className="w-4 h-4" />
+                <span>{loading ? 'Sending Verification Code...' : 'Send Email Verification Code'}</span>
               </button>
 
               <div className="text-center pt-2">
@@ -1074,7 +1045,7 @@ export default function AuthGateway({
           )}
 
         </div>
-          </div>
+          </aside>
 
         </div>
       </div>

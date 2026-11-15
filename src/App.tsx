@@ -462,6 +462,15 @@ export default function App() {
     return (
       <PublicLanding 
         courses={listCourses}
+        activeUser={activeUser}
+        onLoginSuccess={(user) => {
+          handleSelectUser(user);
+          setCurrentView('portal');
+        }}
+        onNavigateToRegister={() => {
+          setAuthInitialMode('register');
+          setCurrentView('login');
+        }}
         onNavigateToPortal={() => {
           setAuthInitialMode('signin');
           setCurrentView(activeUser ? 'portal' : 'login');
