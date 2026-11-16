@@ -184,12 +184,7 @@ app.post('/api/registrations/verify-captcha', (req, res) => {
 });
 
 app.post('/api/admissions/submit', (req, res) => {
-  const { captchaToken, leadData } = req.body || {};
-  const verification = consumeCaptchaToken(captchaToken, 'admissions');
-  if (!verification.valid) {
-    return res.status(403).json({ success: false, error: verification.error });
-  }
-
+  const { leadData } = req.body || {};
   if (!leadData || !leadData.name || !leadData.email || !leadData.phone) {
     return res.status(400).json({
       success: false,

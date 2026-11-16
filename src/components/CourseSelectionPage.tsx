@@ -24,7 +24,6 @@ import {
   SwanayaDatabase
 } from '../db/mockDb';
 import { academyService } from '../services/academyService';
-import VisualCaptcha from './VisualCaptcha';
 
 interface CourseSelectionPageProps {
   initialCourseId?: string;
@@ -90,8 +89,6 @@ export default function CourseSelectionPage({
   const [applicantEmail, setApplicantEmail] = useState('');
   const [applicantPhone, setApplicantPhone] = useState('');
   const [applicantNotes, setApplicantNotes] = useState('');
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const [captchaResetSignal, setCaptchaResetSignal] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submittedSuccess, setSubmittedSuccess] = useState(false);
@@ -204,11 +201,6 @@ export default function CourseSelectionPage({
       return;
     }
 
-    if (!captchaToken) {
-      setSubmitError('Please complete the human verification CAPTCHA before submitting.');
-      return;
-    }
-
     const compiledLeadData = {
       name: applicantName.trim(),
       email: applicantEmail.trim(),
@@ -230,24 +222,19 @@ export default function CourseSelectionPage({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          captchaToken,
           leadData: compiledLeadData,
         }),
       });
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setSubmitError(data.error || 'CAPTCHA verification failed. Please try again.');
-        setCaptchaToken(null);
-        setCaptchaResetSignal((prev) => prev + 1);
+        setSubmitError(data.error || 'Submission failed. Please try again.');
         setIsSubmitting(false);
         return;
       }
 
       onApplyLead(compiledLeadData);
       setSubmittedSuccess(true);
-      setCaptchaToken(null);
-      setCaptchaResetSignal((prev) => prev + 1);
     } catch {
       setSubmitError('Network error submitting course selection. Please try again.');
     } finally {
@@ -709,15 +696,7 @@ export default function CourseSelectionPage({
                     />
                   </div>
 
-                  <VisualCaptcha
-                    purpose="admissions"
-                    compact
-                    onTokenChange={(tok) => {
-                      setCaptchaToken(tok);
-                      if (tok) setSubmitError(null);
-                    }}
-                    resetSignal={captchaResetSignal}
-                  />
+
 
                   {submitError && (
                     <div

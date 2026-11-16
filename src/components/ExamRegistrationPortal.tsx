@@ -8,7 +8,6 @@ import {
 } from '../db/mockDb';
 import { useAuth } from './FirebaseAuthProvider';
 import { academyService } from '../services/academyService';
-import VisualCaptcha from './VisualCaptcha';
 import { auth, db } from '../firebase';
 import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 
@@ -88,8 +87,6 @@ export default function ExamRegistrationPortal({
     subjectName: '',
     preferredDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
   });
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const [captchaResetSignal, setCaptchaResetSignal] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Admin Create Session Modal State
@@ -203,8 +200,6 @@ export default function ExamRegistrationPortal({
     setSelectedSession(session);
     setIsDirectExamModalOpen(false);
     setDeclaredEligibility(false);
-    setCaptchaToken(null);
-    setCaptchaResetSignal((p) => p + 1);
     setStatusMessage(null);
   };
 
@@ -212,8 +207,6 @@ export default function ExamRegistrationPortal({
     setSelectedSession(null);
     setIsDirectExamModalOpen(true);
     setDeclaredEligibility(false);
-    setCaptchaToken(null);
-    setCaptchaResetSignal((p) => p + 1);
     setStatusMessage(null);
   };
 
@@ -225,14 +218,6 @@ export default function ExamRegistrationPortal({
       setStatusMessage({
         type: 'error',
         text: 'Please confirm the examination candidate declaration before submitting.',
-      });
-      return;
-    }
-
-    if (!captchaToken) {
-      setStatusMessage({
-        type: 'error',
-        text: 'Please complete the human verification CAPTCHA before registering.',
       });
       return;
     }
@@ -254,7 +239,6 @@ export default function ExamRegistrationPortal({
 
     setIsSubmitting(true);
     try {
-      await academyService.verifyExamCaptcha(captchaToken);
 
       const center =
         examCenters.find((c) => c.id === selectedCenterId) || examCenters[0];
@@ -320,8 +304,6 @@ export default function ExamRegistrationPortal({
 
       setSelectedSession(null);
       setIsDirectExamModalOpen(false);
-      setCaptchaToken(null);
-      setCaptchaResetSignal((p) => p + 1);
       setActiveSubTab('my-registrations');
       setStatusMessage({
         type: 'success',
@@ -329,8 +311,6 @@ export default function ExamRegistrationPortal({
       });
       onRefreshAllData();
     } catch (err: any) {
-      setCaptchaToken(null);
-      setCaptchaResetSignal((p) => p + 1);
       setStatusMessage({
         type: 'error',
         text: err?.message || 'Unable to complete examination registration.',
@@ -1232,12 +1212,7 @@ export default function ExamRegistrationPortal({
                 </span>
               </label>
 
-              <VisualCaptcha
-                purpose="exam_registration"
-                compact
-                onTokenChange={(tok) => setCaptchaToken(tok)}
-                resetSignal={captchaResetSignal}
-              />
+
 
               <div className="pt-3 border-t border-slate-800 flex justify-end gap-3">
                 <button

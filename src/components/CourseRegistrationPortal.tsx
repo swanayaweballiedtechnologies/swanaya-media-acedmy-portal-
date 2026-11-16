@@ -10,7 +10,6 @@ import {
 } from '../db/mockDb';
 import { academyService } from '../services/academyService';
 import { auth } from '../firebase';
-import VisualCaptcha from './VisualCaptcha';
 
 interface CourseRegistrationPortalProps {
   studentUser: Student;
@@ -51,8 +50,6 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
   const [motivationNote, setMotivationNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const [captchaResetSignal, setCaptchaResetSignal] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const filterForStudent = (list: CourseSelectionRegistration[]) => {
@@ -193,11 +190,6 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
     }
     setSubmitError(null);
 
-    if (!captchaToken) {
-      setSubmitError('Please complete the human verification CAPTCHA before submitting.');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const savedRecord = await academyService.registerForCourse(
@@ -224,8 +216,7 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
             reason: motivationNote.trim() || `Enrolling under ${careerGoals} track (${studyMode})`,
           },
           timestamp: new Date().toISOString(),
-        },
-        captchaToken
+        }
       );
 
       if (savedRecord) {
@@ -255,14 +246,10 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
 
       setIsSubmitting(false);
       setSuccess(true);
-      setCaptchaToken(null);
-      setCaptchaResetSignal((prev) => prev + 1);
       setMotivationNote('');
       onRefreshAllData();
     } catch (err: any) {
       setIsSubmitting(false);
-      setCaptchaToken(null);
-      setCaptchaResetSignal((prev) => prev + 1);
       setSubmitError(err?.message || 'Registration failed. Please try again.');
     }
   };
@@ -570,15 +557,6 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
                   />
                 </div>
 
-                <VisualCaptcha
-                  purpose="course_registration"
-                  compact
-                  onTokenChange={(tok) => {
-                    setCaptchaToken(tok);
-                    if (tok) setSubmitError(null);
-                  }}
-                  resetSignal={captchaResetSignal}
-                />
 
                 {submitError && (
                   <div

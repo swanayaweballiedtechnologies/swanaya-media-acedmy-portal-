@@ -13,7 +13,6 @@ import { SwanayaDatabase, Course, AcademyReview, FrontPageConfig, FrontPagePoste
 import { academyService } from '../services/academyService';
 import { auth } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import VisualCaptcha from './VisualCaptcha';
 import { applyDocumentFavicon } from '../utils/favicon';
 import { parseFrontPageVideoUrl } from '../utils/mediaHelpers';
 
@@ -194,8 +193,6 @@ export default function PublicLanding({
     message: ''
   });
   const [submitted, setSubmitted] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const [captchaResetSignal, setCaptchaResetSignal] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -336,35 +333,25 @@ export default function PublicLanding({
     setSubmitError(null);
     if (!formData.name || !formData.email || !formData.phone) return;
 
-    if (!captchaToken) {
-      setSubmitError('Please complete the human verification CAPTCHA before submitting.');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const res = await fetch('/api/admissions/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          captchaToken,
           leadData: formData,
         }),
       });
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        setSubmitError(data.error || 'Verification failed. Please solve a fresh CAPTCHA.');
-        setCaptchaToken(null);
-        setCaptchaResetSignal((prev) => prev + 1);
+        setSubmitError(data.error || 'Submission failed. Please try again.');
         setIsSubmitting(false);
         return;
       }
 
       onApplyLead(formData);
       setSubmitted(true);
-      setCaptchaToken(null);
-      setCaptchaResetSignal((prev) => prev + 1);
       setIsSubmitting(false);
 
       setTimeout(() => {
@@ -1299,15 +1286,6 @@ export default function PublicLanding({
                       className="w-full bg-slate-950 border border-slate-800 rounded px-4 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-400"
                     />
                   </div>
-
-                  <VisualCaptcha
-                    purpose="admissions"
-                    onTokenChange={(tok) => {
-                      setCaptchaToken(tok);
-                      if (tok) setSubmitError(null);
-                    }}
-                    resetSignal={captchaResetSignal}
-                  />
 
                   {submitError && (
                     <div

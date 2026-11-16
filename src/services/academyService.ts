@@ -287,22 +287,8 @@ export const academyService = {
   },
 
   // --- REGISTRATIONS (COURSE SELECTION & VERIFICATION) ---
-  async registerForCourse(registration: any, captchaToken?: string | null) {
+  async registerForCourse(registration: any) {
     const path = 'registrations';
-    if (!captchaToken) {
-      throw new Error('Please complete the human verification CAPTCHA before submitting.');
-    }
-
-    const verifyRes = await fetch('/api/registrations/verify-captcha', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ captchaToken, purpose: 'course_registration' }),
-    });
-    const verifyData = await verifyRes.json();
-    if (!verifyRes.ok || !verifyData.valid) {
-      throw new Error(verifyData.error || 'CAPTCHA verification failed. Please verify again.');
-    }
-
     const nowIso = new Date().toISOString();
     const recordId = registration.id || `creg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const payload = {
@@ -436,20 +422,8 @@ export const academyService = {
     }
   },
 
-  async verifyExamCaptcha(captchaToken?: string | null) {
-    if (!captchaToken) {
-      throw new Error('Please complete the human verification CAPTCHA before registering.');
-    }
-    const verifyRes = await fetch('/api/registrations/verify-captcha', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ captchaToken, purpose: 'exam_registration' }),
-    });
-    const verifyData = await verifyRes.json();
-    if (!verifyRes.ok || !verifyData.valid) {
-      throw new Error(verifyData.error || 'CAPTCHA verification failed. Please verify again.');
-    }
-    return verifyData;
+  async verifyExamCaptcha(_captchaToken?: string | null) {
+    return { valid: true };
   },
 
   async registerForExam(registrationData: any) {

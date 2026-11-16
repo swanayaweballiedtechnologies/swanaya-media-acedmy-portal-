@@ -13,7 +13,6 @@ import { User, UserRole, SwanayaDatabase, Student, Instructor, Course } from '..
 import { auth } from '../firebase';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { academyService } from '../services/academyService';
-import VisualCaptcha from './VisualCaptcha';
 import campusStudioImg from '../assets/images/academy_campus_studio_1794672061245.jpg';
 import filmProductionImg from '../assets/images/academy_film_production_1794672061497.jpg';
 import codingLabImg from '../assets/images/academy_coding_lab_1794672063747.jpg';
@@ -155,9 +154,7 @@ export default function AuthGateway({
   const [verificationError, setVerificationError] = useState('');
   const [resendNotification, setResendNotification] = useState(false);
 
-  // CAPTCHA Verification state
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const [captchaResetSignal, setCaptchaResetSignal] = useState(0);
+
 
   // Academy Showcase Gallery state
   const [featuredPhotoId, setFeaturedPhotoId] = useState<string>('campus');
