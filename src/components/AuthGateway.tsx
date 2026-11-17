@@ -194,34 +194,50 @@ export default function AuthGateway({
   };
 
   // Handle Login
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      const usersList = SwanayaDatabase.get<User[]>("users");
-      const cleanInput = loginInput.trim().toLowerCase();
-      
-      const found = usersList.find(u => 
-        (u.username && u.username.toLowerCase() === cleanInput) ||
-        u.email.toLowerCase() === cleanInput ||
-        u.name.toLowerCase() === cleanInput
-      );
-      
-      if (found) {
-        if (found.status === 'INACTIVE') {
+    const cleanInput = loginInput.trim().toLowerCase();
+
+    // 1. Central directory lookup so any registered/updated user can log in from any system
+    try {
+      const serverResult = await academyService.lookupUserForLogin(cleanInput);
+      if (serverResult?.user) {
+        if (serverResult.user.status === 'INACTIVE') {
           setError('This account has been deactivated. Please contact admin.');
           setLoading(false);
           return;
         }
-
-        onLoginSuccess(found);
-      } else {
-        setError('Invalid credentials. Please check your username or email address.');
         setLoading(false);
+        onLoginSuccess(serverResult.user);
+        return;
       }
-    }, 500);
+    } catch {
+      // Fallback to local store check below
+    }
+
+    // 2. Local fallback check
+    const usersList = SwanayaDatabase.get<User[]>("users") || [];
+    const found = usersList.find(u => 
+      (u.username && u.username.toLowerCase() === cleanInput) ||
+      u.email.toLowerCase() === cleanInput ||
+      u.name.toLowerCase() === cleanInput
+    );
+    
+    if (found) {
+      if (found.status === 'INACTIVE') {
+        setError('This account has been deactivated. Please contact admin.');
+        setLoading(false);
+        return;
+      }
+      setLoading(false);
+      onLoginSuccess(found);
+    } else {
+      setError('Invalid credentials. Please check your username or email address.');
+      setLoading(false);
+    }
   };
 
   // Handle Initial Registration Submit -> Verifies CAPTCHA on backend, generates OTP & transitions to Verification
@@ -319,9 +335,12 @@ export default function AuthGateway({
       SwanayaDatabase.set("users", updatedUsers);
 
       // Create linked entity if Student or Instructor
+      let newStudent: Student | null = null;
+      let newInstructor: Instructor | null = null;
+
       if (regRole === 'STUDENT') {
         const studentsList = SwanayaDatabase.get<Student[]>("students");
-        const newStudent: Student = {
+        newStudent = {
           id: `s-${Date.now()}`,
           studentId: `SMA-2026-${Math.floor(100 + Math.random() * 900)}`,
           admissionNumber: `ADM-2026-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -350,7 +369,7 @@ export default function AuthGateway({
         SwanayaDatabase.set("students", [...studentsList, newStudent]);
       } else if (regRole === 'INSTRUCTOR') {
         const instructorsList = SwanayaDatabase.get<Instructor[]>("instructors");
-        const newInstructor: Instructor = {
+        newInstructor = {
           id: `inst-${Date.now()}`,
           userId: newUserId,
           name: regName.trim(),
@@ -368,6 +387,13 @@ export default function AuthGateway({
       }
 
       SwanayaDatabase.log(newUser.email, newUser.name, "USER_REGISTRATION_WHATSAPP", `Registered for Course ${regCourseId} with WhatsApp Integration: ${finalWhatsapp}`);
+
+      // Sync immediately to centralized server & Firestore so account works on every system
+      academyService.syncProfileToCloud(
+        newUser,
+        regRole === 'STUDENT' ? (newStudent as Student) : null,
+        regRole === 'INSTRUCTOR' ? (newInstructor as Instructor) : null
+      ).catch(e => console.warn('Cloud sync on register notice:', e));
 
       setLoading(false);
       onLoginSuccess(newUser);

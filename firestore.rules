@@ -56,12 +56,19 @@ service cloud.firestore {
              data.keys().hasOnly([
                'id', 'name', 'email', 'role', 'avatarUrl', 'avatarFocus',
                'phone', 'whatsappPhone', 'guardianName', 'guardianPhone',
-               'academicBackground', 'skills', 'bio', 'status', 'createdAt', 'updatedAt'
+               'academicBackground', 'skills', 'bio', 'status', 'createdAt', 'updatedAt',
+               'username', 'isVerified', 'whatsappOptIn', 'preferredCourseId', 'studentIds', 'guardianPin'
              ]) &&
              data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
              data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
              data.role is string && data.role in ['MD', 'PRINCIPAL', 'STUDENT', 'ADMIN', 'ACADEMIC_ADMIN', 'INSTRUCTOR', 'ALUMNI', 'REVIEWER', 'FINANCE', 'COUNSELLOR', 'CAREER', 'PARENT', 'SUPER_ADMIN'] &&
+             (!('username' in data) || (data.username is string && data.username.size() <= 64)) &&
+             (!('isVerified' in data) || data.isVerified is bool) &&
+             (!('whatsappOptIn' in data) || data.whatsappOptIn is bool) &&
+             (!('preferredCourseId' in data) || (data.preferredCourseId is string && data.preferredCourseId.size() <= 128)) &&
+             (!('studentIds' in data) || (data.studentIds is list && data.studentIds.size() <= 20)) &&
+             (!('guardianPin' in data) || (data.guardianPin is string && data.guardianPin.size() <= 20)) &&
              (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 250000)) &&
              (!('avatarFocus' in data) || data.avatarFocus in ['center', 'top']) &&
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 64)) &&

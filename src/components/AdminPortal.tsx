@@ -248,6 +248,18 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
       } : s);
       saveStudents(updated);
       SwanayaDatabase.log(currentUser.email, currentUser.name, "STUDENT_UPDATE", `Student: ${studentForm.name} (WhatsApp: ${finalWhatsapp})`);
+      const studentObj = updated.find(s => s.id === editingStudent.id);
+      const userObj = SwanayaDatabase.get<User[]>("users").find(u => u.id === editingStudent.userId || u.email === editingStudent.email);
+      if (userObj && studentObj) {
+        academyService.syncProfileToCloud({
+          ...userObj,
+          name: studentObj.name,
+          email: studentObj.email,
+          phone: studentObj.phone,
+          whatsappPhone: studentObj.whatsappPhone,
+          avatarUrl: studentObj.avatarUrl
+        }, studentObj).catch(e => console.warn('Student sync note:', e));
+      }
     } else {
       // Create
       const newId = `stud-${Date.now()}`;
@@ -295,6 +307,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
 
       saveStudents([...students, newStudent]);
       SwanayaDatabase.log(currentUser.email, currentUser.name, "STUDENT_CREATE", `Student: ${studentForm.name}`);
+
+      academyService.syncProfileToCloud(newUser, newStudent).catch(e => console.warn('New student cloud sync note:', e));
     }
     setIsStudentModalOpen(false);
   };

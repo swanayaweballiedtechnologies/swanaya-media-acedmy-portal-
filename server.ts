@@ -12,7 +12,7 @@ import {
   createCaptchaChallenge,
   verifyCaptchaChallenge,
   consumeCaptchaToken,
-  CaptchaMode,
+  type CaptchaMode,
 } from './serverCaptcha.ts';
 
 dotenv.config();
@@ -196,6 +196,300 @@ app.post('/api/admissions/submit', (req, res) => {
     success: true,
     verifiedAt: new Date().toISOString(),
   });
+});
+
+// --- Persistent Multi-Device Profiles Storage ---
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const PROFILES_FILE = path.resolve(DATA_DIR, 'persistent_profiles.json');
+
+interface PersistentStore {
+  users: any[];
+  students: any[];
+  instructors: any[];
+  updatedAt: string;
+}
+
+const DEFAULT_SEED_USERS = [
+  { id: "usr-md", username: "aadithyan", email: "aadithyan.menon@swanayamedia.com", name: "AADITHYAN M MENON", role: "MD", avatarUrl: "https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon", status: "ACTIVE", createdAt: "2026-01-01", isVerified: true },
+  { id: "usr-principal", username: "principal", email: "principal@swanayamedia.com", name: "Academy Principal", role: "PRINCIPAL", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Principal", status: "ACTIVE", createdAt: "2026-01-01", isVerified: true },
+  { id: "usr-navven", username: "navven", email: "navven.admin@swanayamedia.com", name: "NAVVEN (Administrator)", role: "ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Naveen", status: "ACTIVE", createdAt: "2026-01-02", isVerified: true },
+  { id: "usr-reviewer", username: "reviewer", email: "reviewer@swanayamedia.com", name: "Academic Reviewer", role: "REVIEWER", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Reviewer", status: "ACTIVE", createdAt: "2026-01-05", isVerified: true },
+  { id: "usr-alumni", username: "alumni", email: "alumni@swanayamedia.com", name: "Alumni Graduate", role: "ALUMNI", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alumni", status: "ACTIVE", createdAt: "2026-01-08", isVerified: true }
+];
+
+function readPersistentStore(): PersistentStore {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(PROFILES_FILE)) {
+      const raw = fs.readFileSync(PROFILES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      return {
+        users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : [...DEFAULT_SEED_USERS],
+        students: Array.isArray(parsed.students) ? parsed.students : [],
+        instructors: Array.isArray(parsed.instructors) ? parsed.instructors : [],
+        updatedAt: parsed.updatedAt || new Date().toISOString()
+      };
+    }
+  } catch (e) {
+    console.warn('Error reading persistent profiles file:', e);
+  }
+  return {
+    users: [...DEFAULT_SEED_USERS],
+    students: [],
+    instructors: [],
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function writePersistentStore(store: PersistentStore) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(PROFILES_FILE, JSON.stringify(store, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error writing persistent profiles file:', e);
+  }
+}
+
+// 1. Fetch all cloud-synced profiles (for app startup & multi-device hydration)
+app.get('/api/sync/profiles', async (req, res) => {
+  try {
+    const store = readPersistentStore();
+
+    if (db) {
+      try {
+        const snap = await db.collection('users').get();
+        snap.docs.forEach((d: any) => {
+          const u = { id: d.id, ...d.data() };
+          const idx = store.users.findIndex((x: any) => x.id === u.id || (u.email && x.email?.toLowerCase() === u.email?.toLowerCase()));
+          if (idx >= 0) {
+            store.users[idx] = { ...store.users[idx], ...u };
+          } else {
+            store.users.push(u);
+          }
+        });
+
+        const stSnap = await db.collection('students').get();
+        stSnap.docs.forEach((d: any) => {
+          const st = { id: d.id, ...d.data() };
+          const idx = store.students.findIndex((x: any) => x.id === st.id || x.userId === st.userId || (st.email && x.email?.toLowerCase() === st.email?.toLowerCase()));
+          if (idx >= 0) {
+            store.students[idx] = { ...store.students[idx], ...st };
+          } else {
+            store.students.push(st);
+          }
+        });
+      } catch (err: any) {
+        console.warn('Firestore profiles fetch note:', err.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      users: store.users,
+      students: store.students,
+      instructors: store.instructors,
+      updatedAt: store.updatedAt
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 2. Save or update a user profile, student record, or instructor record
+app.post('/api/sync/profile', async (req, res) => {
+  try {
+    const { user, student, instructor } = req.body || {};
+    if (!user || !user.id || !user.name) {
+      return res.status(400).json({ success: false, error: 'User profile with id and name is required.' });
+    }
+
+    const store = readPersistentStore();
+    const nowIso = new Date().toISOString();
+
+    const userIndex = store.users.findIndex((u: any) => u.id === user.id || (user.email && u.email?.toLowerCase() === user.email.toLowerCase()));
+    const mergedUser = {
+      ...(userIndex >= 0 ? store.users[userIndex] : {}),
+      ...user,
+      updatedAt: nowIso
+    };
+    if (userIndex >= 0) {
+      store.users[userIndex] = mergedUser;
+    } else {
+      store.users.push(mergedUser);
+    }
+
+    let mergedStudent = null;
+    if (student && (student.id || student.userId)) {
+      const studentIndex = store.students.findIndex((s: any) => 
+        (student.id && s.id === student.id) || 
+        (student.userId && s.userId === student.userId) ||
+        (student.email && s.email?.toLowerCase() === student.email?.toLowerCase())
+      );
+      mergedStudent = {
+        ...(studentIndex >= 0 ? store.students[studentIndex] : {}),
+        ...student,
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || student.phone,
+        avatarUrl: user.avatarUrl || student.avatarUrl,
+        updatedAt: nowIso
+      };
+      if (studentIndex >= 0) {
+        store.students[studentIndex] = mergedStudent;
+      } else {
+        store.students.push(mergedStudent);
+      }
+    }
+
+    let mergedInstructor = null;
+    if (instructor && (instructor.id || instructor.userId)) {
+      const instIndex = store.instructors.findIndex((i: any) => 
+        (instructor.id && i.id === instructor.id) || 
+        (instructor.userId && i.userId === instructor.userId)
+      );
+      mergedInstructor = {
+        ...(instIndex >= 0 ? store.instructors[instIndex] : {}),
+        ...instructor,
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || instructor.phone,
+        avatarUrl: user.avatarUrl || instructor.avatarUrl,
+        updatedAt: nowIso
+      };
+      if (instIndex >= 0) {
+        store.instructors[instIndex] = mergedInstructor;
+      } else {
+        store.instructors.push(mergedInstructor);
+      }
+    }
+
+    store.updatedAt = nowIso;
+    writePersistentStore(store);
+
+    if (db) {
+      try {
+        await db.collection('users').doc(user.id).set(mergedUser, { merge: true });
+        if (mergedStudent) {
+          await db.collection('students').doc(mergedStudent.id || mergedStudent.userId).set(mergedStudent, { merge: true });
+        }
+        if (mergedInstructor) {
+          await db.collection('instructors').doc(mergedInstructor.id || mergedInstructor.userId).set(mergedInstructor, { merge: true });
+        }
+      } catch (cloudErr: any) {
+        console.warn('Firestore Admin profile sync notice:', cloudErr.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      user: mergedUser,
+      student: mergedStudent,
+      instructor: mergedInstructor
+    });
+  } catch (err: any) {
+    console.error('Error in /api/sync/profile:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 3. Central Login Authentication & Profile Hydration (works across any system/browser)
+app.post('/api/sync/login', async (req, res) => {
+  try {
+    const { identifier } = req.body || {};
+    if (!identifier || typeof identifier !== 'string') {
+      return res.status(400).json({ success: false, error: 'Identifier is required.' });
+    }
+
+    const clean = identifier.trim().toLowerCase();
+    const store = readPersistentStore();
+
+    let user = store.users.find((u: any) => 
+      (u.username && u.username.toLowerCase() === clean) ||
+      (u.email && u.email.toLowerCase() === clean) ||
+      (u.name && u.name.toLowerCase() === clean)
+    );
+
+    if (!user && db) {
+      try {
+        const emailSnap = await db.collection('users').where('email', '==', clean).limit(1).get();
+        if (!emailSnap.empty) {
+          user = { id: emailSnap.docs[0].id, ...emailSnap.docs[0].data() };
+        } else {
+          const usernameSnap = await db.collection('users').where('username', '==', clean).limit(1).get();
+          if (!usernameSnap.empty) {
+            user = { id: usernameSnap.docs[0].id, ...usernameSnap.docs[0].data() };
+          }
+        }
+        if (user) {
+          store.users.push(user);
+          writePersistentStore(store);
+        }
+      } catch (err: any) {
+        console.warn('Firestore login lookup note:', err.message);
+      }
+    }
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found in system directory.' });
+    }
+
+    let student = store.students.find((s: any) => 
+      s.userId === user.id || 
+      (user.email && s.email && s.email.toLowerCase() === user.email.toLowerCase())
+    );
+
+    if (!student && (user.role === 'STUDENT' || user.role === 'ALUMNI')) {
+      student = {
+        id: `s-${user.id}`,
+        studentId: user.studentId || `SMA-2026-${user.id.slice(-4).toUpperCase()}`,
+        admissionNumber: `ADM-2026-${user.id.slice(-4).toUpperCase()}`,
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || '+91 94460 00000',
+        whatsappPhone: user.whatsappPhone || user.phone || '+91 94460 00000',
+        whatsappOptIn: user.whatsappOptIn ?? true,
+        guardianName: user.guardianName || 'Parent / Guardian',
+        guardianPhone: user.guardianPhone || '+91 94460 00000',
+        academicBackground: user.academicBackground || 'Enrolled Scholar',
+        avatarUrl: user.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.name)}`,
+        status: user.status || 'ACTIVE',
+        courseId: user.preferredCourseId || 'c-1',
+        batchId: 'b-1',
+        semesterId: 's-1-1',
+        enrollmentDate: user.createdAt || new Date().toISOString().split('T')[0],
+        skills: user.skills || ['Media Science'],
+        projectsCount: 0,
+        certificatesCount: 0,
+        attendancePercentage: 100,
+        outstandingBalance: 0,
+        careerReadinessScore: 50
+      };
+      store.students.push(student);
+      writePersistentStore(store);
+    }
+
+    const instructor = store.instructors.find((i: any) => 
+      i.userId === user.id || 
+      (user.email && i.email && i.email.toLowerCase() === user.email.toLowerCase())
+    );
+
+    return res.json({
+      success: true,
+      user,
+      student,
+      instructor
+    });
+  } catch (err: any) {
+    console.error('Error in /api/sync/login:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Express route to handle registration welcome emails

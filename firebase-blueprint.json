@@ -20,7 +20,13 @@
         "bio": { "type": "string" },
         "status": { "type": "string" },
         "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "updatedAt": { "type": "string" },
+        "username": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "whatsappOptIn": { "type": "boolean" },
+        "preferredCourseId": { "type": "string" },
+        "studentIds": { "type": "array" },
+        "guardianPin": { "type": "string" }
       },
       "required": ["id", "name", "email", "role"]
     },

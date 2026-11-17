@@ -237,22 +237,18 @@ export default function PublicLanding({
     }
   };
 
-  const handleSideCredentialLogin = (e: React.FormEvent) => {
+  const handleSideCredentialLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setSideLoginError('');
     setSideLoginLoading(true);
 
-    setTimeout(() => {
-      const usersList = SwanayaDatabase.get<SwanayaUser[]>('users') || [];
-      const cleanInput = sideLoginInput.trim().toLowerCase();
-      const found = usersList.find((u) =>
-        (u.username && u.username.toLowerCase() === cleanInput) ||
-        u.email.toLowerCase() === cleanInput ||
-        u.name.toLowerCase() === cleanInput
-      );
+    const cleanInput = sideLoginInput.trim().toLowerCase();
 
-      if (found) {
-        if (found.status === 'INACTIVE') {
+    // 1. Central directory lookup so any registered/updated user can log in across systems
+    try {
+      const serverResult = await academyService.lookupUserForLogin(cleanInput);
+      if (serverResult?.user) {
+        if (serverResult.user.status === 'INACTIVE') {
           setSideLoginError('This account has been deactivated. Please contact admin.');
           setSideLoginLoading(false);
           return;
@@ -260,15 +256,41 @@ export default function PublicLanding({
         setSideLoginLoading(false);
         setIsSideLoginOpen(false);
         if (onLoginSuccess) {
-          onLoginSuccess(found);
+          onLoginSuccess(serverResult.user);
         } else {
           onNavigateToPortal();
         }
-      } else {
-        setSideLoginError('Invalid credentials. Check your username or email address.');
-        setSideLoginLoading(false);
+        return;
       }
-    }, 350);
+    } catch {
+      // Fallback to local check
+    }
+
+    // 2. Local fallback check
+    const usersList = SwanayaDatabase.get<SwanayaUser[]>('users') || [];
+    const found = usersList.find((u) =>
+      (u.username && u.username.toLowerCase() === cleanInput) ||
+      u.email.toLowerCase() === cleanInput ||
+      u.name.toLowerCase() === cleanInput
+    );
+
+    if (found) {
+      if (found.status === 'INACTIVE') {
+        setSideLoginError('This account has been deactivated. Please contact admin.');
+        setSideLoginLoading(false);
+        return;
+      }
+      setSideLoginLoading(false);
+      setIsSideLoginOpen(false);
+      if (onLoginSuccess) {
+        onLoginSuccess(found);
+      } else {
+        onNavigateToPortal();
+      }
+    } else {
+      setSideLoginError('Invalid credentials. Check your username or email address.');
+      setSideLoginLoading(false);
+    }
   };
 
   const handlePublicReviewSubmit = async (e: React.FormEvent) => {

@@ -45,6 +45,7 @@ import { useAuth } from './components/FirebaseAuthProvider';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { signOut } from 'firebase/auth';
+import { academyService } from './services/academyService';
 
 export default function App() {
   // Initialize standard local db on boot & auto-save listener
@@ -54,6 +55,15 @@ export default function App() {
     SwanayaDatabase.init();
     const savedFrontPage = SwanayaDatabase.get<FrontPageConfig>('frontPageConfig');
     applyDocumentFavicon(savedFrontPage?.faviconUrl);
+
+    // Pull all users, students, and profile updates from cloud so profile is identical across all systems
+    academyService.fetchAllProfilesFromCloud().then((data) => {
+      if (data) {
+        setUsers(SwanayaDatabase.get<User[]>("users"));
+        setStudents(SwanayaDatabase.get<Student[]>("students"));
+        setInstructors(SwanayaDatabase.get<Instructor[]>("instructors"));
+      }
+    }).catch((err) => console.warn('Cloud profiles boot sync deferred:', err));
 
     const handleAutoSave = () => {
       setAutoSaveToast(true);
@@ -322,9 +332,71 @@ export default function App() {
     };
   }, [activeUser, refreshTrigger, isAdmin]);
 
-  // Find respective active student or instructor object matching active logged in user
-  const activeStudentProfile = activeUser ? (students.find(s => s.userId === activeUser.id) || students[0]) : null;
-  const activeInstructorProfile = activeUser ? (instructors.find(i => i.userId === activeUser.id) || instructors[0]) : null;
+  // Find respective active student or instructor object matching active logged in user without leaking other profiles
+  const activeStudentProfile = React.useMemo<Student | null>(() => {
+    if (!activeUser) return null;
+    const match = students.find((s) => 
+      s.userId === activeUser.id || 
+      (s.email && activeUser.email && s.email.toLowerCase() === activeUser.email.toLowerCase())
+    );
+    if (match) return match;
+    if (activeUser.role === 'STUDENT' || activeUser.role === 'ALUMNI') {
+      const fallbackStudent: Student = {
+        id: `s-${activeUser.id}`,
+        studentId: (activeUser as any).studentId || (activeUser.studentIds && activeUser.studentIds[0]) || `SMA-2026-${activeUser.id.slice(-4).toUpperCase()}`,
+        admissionNumber: `ADM-2026-${activeUser.id.slice(-4).toUpperCase()}`,
+        userId: activeUser.id,
+        name: activeUser.name,
+        email: activeUser.email,
+        phone: activeUser.phone || activeUser.whatsappPhone || '+91 94460 00000',
+        whatsappPhone: activeUser.whatsappPhone || activeUser.phone || '+91 94460 00000',
+        whatsappOptIn: activeUser.whatsappOptIn ?? true,
+        guardianName: activeUser.guardianName || 'Parent / Guardian',
+        guardianPhone: activeUser.guardianPhone || '+91 94460 00000',
+        academicBackground: activeUser.academicBackground || 'Enrolled Scholar',
+        avatarUrl: activeUser.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(activeUser.name)}`,
+        status: activeUser.status || 'ACTIVE',
+        courseId: activeUser.preferredCourseId || coursesList[0]?.id || 'c-1',
+        batchId: 'b-1',
+        semesterId: 's-1-1',
+        enrollmentDate: activeUser.createdAt || new Date().toISOString().split('T')[0],
+        skills: activeUser.skills || ['Media Science'],
+        projectsCount: 0,
+        certificatesCount: 0,
+        attendancePercentage: 100,
+        outstandingBalance: 0,
+        careerReadinessScore: 50
+      };
+      return fallbackStudent;
+    }
+    return null;
+  }, [activeUser, students, coursesList]);
+
+  const activeInstructorProfile = React.useMemo<Instructor | null>(() => {
+    if (!activeUser) return null;
+    const match = instructors.find((i) => 
+      i.userId === activeUser.id || 
+      (i.email && activeUser.email && i.email.toLowerCase() === activeUser.email.toLowerCase())
+    );
+    if (match) return match;
+    if (activeUser.role === 'INSTRUCTOR' || activeUser.role === 'REVIEWER') {
+      return {
+        id: `inst-${activeUser.id}`,
+        userId: activeUser.id,
+        name: activeUser.name,
+        email: activeUser.email,
+        phone: activeUser.phone || '+91 94460 00000',
+        qualification: activeUser.academicBackground || 'Faculty Specialist',
+        specialization: activeUser.skills?.join(', ') || 'Media Science & AI',
+        experience: '5+ Years',
+        bio: activeUser.bio || 'Faculty Instructor at Swanaya Media Academy',
+        avatarUrl: activeUser.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(activeUser.name)}`,
+        status: activeUser.status || 'ACTIVE',
+        assignedSubjects: []
+      };
+    }
+    return null;
+  }, [activeUser, instructors]);
 
   // CRM submissions triggers from landing form & course selection page
   const handleApplyFromLanding = (leadData: {

@@ -423,35 +423,15 @@ export default function IndividualProfileModal({
         : [...allUsers, updatedUserRecord];
       SwanayaDatabase.set('users', nextUsers);
 
-      // Sync to Firestore when Firebase Auth session owns or administers this user document
-      const firebaseUid = auth.currentUser?.uid;
-      const firestoreTargetUid =
-        firebaseUid && (effectiveUserId === firebaseUid || effectiveUserId === currentUser.id)
-          ? firebaseUid
-          : effectiveUserId;
-
+      // Sync to centralized cloud store and Firestore so profile is identical across all systems
       let cloudSynced = false;
-      if (auth.currentUser && firestoreTargetUid) {
-        const firestorePayload = {
-          id: firestoreTargetUid,
-          name: finalName,
-          email: displayEmail,
-          role: updatedUserRecord.role,
-          avatarUrl: finalAvatarUrl,
-          avatarFocus: editForm.avatarFocus,
-          phone: localPatch.phone,
-          whatsappPhone: localPatch.whatsappPhone,
-          guardianName: localPatch.guardianName,
-          guardianPhone: localPatch.guardianPhone,
-          academicBackground: localPatch.academicBackground,
-          skills: normalizedSkills,
-          bio: localPatch.bio,
-          status: updatedUserRecord.status || 'ACTIVE',
-          createdAt: updatedUserRecord.createdAt || now,
-          updatedAt: now,
-        };
-        await academyService.updateUserProfile(firestoreTargetUid, firestorePayload);
+      try {
+        const studentPayload = studentObj ? { ...studentObj, ...localPatch } : null;
+        const instructorPayload = instructorObj ? { ...instructorObj, name: finalName, ...localPatch } : null;
+        await academyService.syncProfileToCloud(updatedUserRecord, studentPayload, instructorPayload);
         cloudSynced = true;
+      } catch (syncErr: any) {
+        console.warn('Sync profile to cloud warning:', syncErr.message);
       }
 
       SwanayaDatabase.log(

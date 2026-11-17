@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth } from '../firebase';
+import { SwanayaDatabase, User, Student, Instructor } from '../db/mockDb';
 
 export enum OperationType {
   CREATE = 'create',
@@ -53,6 +54,164 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 export const academyService = {
+  // --- MULTI-DEVICE PERSISTENT PROFILE SYNCHRONIZATION ---
+  async syncProfileToCloud(user: User, student?: Student | null, instructor?: Instructor | null) {
+    try {
+      const res = await fetch('/api/sync/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user, student, instructor })
+      });
+      const data = await res.json();
+      
+      if (auth.currentUser && user?.id) {
+        try {
+          const targetRef = doc(db, 'users', user.id);
+          await setDoc(targetRef, user, { merge: true });
+        } catch (e: any) {
+          console.warn('Direct Firestore user write notice:', e.message);
+        }
+      }
+
+      if (user) {
+        const currentUsers = SwanayaDatabase.get<User[]>('users') || [];
+        const idx = currentUsers.findIndex(u => u.id === user.id || (user.email && u.email?.toLowerCase() === user.email.toLowerCase()));
+        if (idx >= 0) {
+          currentUsers[idx] = { ...currentUsers[idx], ...user };
+        } else {
+          currentUsers.push(user);
+        }
+        SwanayaDatabase.set('users', currentUsers);
+      }
+
+      if (student) {
+        const currentStudents = SwanayaDatabase.get<Student[]>('students') || [];
+        const idx = currentStudents.findIndex(s => s.id === student.id || s.userId === student.userId || (student.email && s.email?.toLowerCase() === student.email.toLowerCase()));
+        if (idx >= 0) {
+          currentStudents[idx] = { ...currentStudents[idx], ...student };
+        } else {
+          currentStudents.push(student);
+        }
+        SwanayaDatabase.set('students', currentStudents);
+      }
+
+      if (instructor) {
+        const currentInstructors = SwanayaDatabase.get<Instructor[]>('instructors') || [];
+        const idx = currentInstructors.findIndex(i => i.id === instructor.id || i.userId === instructor.userId);
+        if (idx >= 0) {
+          currentInstructors[idx] = { ...currentInstructors[idx], ...instructor };
+        } else {
+          currentInstructors.push(instructor);
+        }
+        SwanayaDatabase.set('instructors', currentInstructors);
+      }
+
+      return data?.user || user;
+    } catch (err: any) {
+      console.warn('Sync profile deferred:', err.message);
+      return user;
+    }
+  },
+
+  async fetchAllProfilesFromCloud() {
+    try {
+      const res = await fetch('/api/sync/profiles');
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.success) return null;
+
+      if (Array.isArray(data.users) && data.users.length > 0) {
+        const localUsers = SwanayaDatabase.get<User[]>('users') || [];
+        const userMap = new Map<string, User>();
+        localUsers.forEach(u => u?.id && userMap.set(u.id, u));
+        data.users.forEach((u: User) => {
+          if (u?.id) {
+            userMap.set(u.id, { ...(userMap.get(u.id) || {}), ...u });
+          }
+        });
+        SwanayaDatabase.set('users', Array.from(userMap.values()));
+      }
+
+      if (Array.isArray(data.students) && data.students.length > 0) {
+        const localStudents = SwanayaDatabase.get<Student[]>('students') || [];
+        const studentMap = new Map<string, Student>();
+        localStudents.forEach(s => s?.id && studentMap.set(s.id, s));
+        data.students.forEach((s: Student) => {
+          if (s?.id) {
+            studentMap.set(s.id, { ...(studentMap.get(s.id) || {}), ...s });
+          }
+        });
+        SwanayaDatabase.set('students', Array.from(studentMap.values()));
+      }
+
+      if (Array.isArray(data.instructors) && data.instructors.length > 0) {
+        const localInstructors = SwanayaDatabase.get<Instructor[]>('instructors') || [];
+        const instMap = new Map<string, Instructor>();
+        localInstructors.forEach(i => i?.id && instMap.set(i.id, i));
+        data.instructors.forEach((i: Instructor) => {
+          if (i?.id) {
+            instMap.set(i.id, { ...(instMap.get(i.id) || {}), ...i });
+          }
+        });
+        SwanayaDatabase.set('instructors', Array.from(instMap.values()));
+      }
+
+      return data;
+    } catch (err: any) {
+      console.warn('Fetch all profiles deferred:', err.message);
+      return null;
+    }
+  },
+
+  async lookupUserForLogin(identifier: string): Promise<{ user: User; student?: Student; instructor?: Instructor } | null> {
+    try {
+      const res = await fetch('/api/sync/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier })
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.success || !data.user) return null;
+
+      const currentUsers = SwanayaDatabase.get<User[]>('users') || [];
+      const userIdx = currentUsers.findIndex(u => u.id === data.user.id || (data.user.email && u.email?.toLowerCase() === data.user.email.toLowerCase()));
+      if (userIdx >= 0) {
+        currentUsers[userIdx] = { ...currentUsers[userIdx], ...data.user };
+      } else {
+        currentUsers.push(data.user);
+      }
+      SwanayaDatabase.set('users', currentUsers);
+
+      if (data.student) {
+        const currentStudents = SwanayaDatabase.get<Student[]>('students') || [];
+        const sIdx = currentStudents.findIndex(s => s.id === data.student.id || s.userId === data.student.userId || (data.student.email && s.email?.toLowerCase() === data.student.email.toLowerCase()));
+        if (sIdx >= 0) {
+          currentStudents[sIdx] = { ...currentStudents[sIdx], ...data.student };
+        } else {
+          currentStudents.push(data.student);
+        }
+        SwanayaDatabase.set('students', currentStudents);
+      }
+
+      if (data.instructor) {
+        const currentInstructors = SwanayaDatabase.get<Instructor[]>('instructors') || [];
+        const iIdx = currentInstructors.findIndex(i => i.id === data.instructor.id || i.userId === data.instructor.userId);
+        if (iIdx >= 0) {
+          currentInstructors[iIdx] = { ...currentInstructors[iIdx], ...data.instructor };
+        } else {
+          currentInstructors.push(data.instructor);
+        }
+        SwanayaDatabase.set('instructors', currentInstructors);
+      }
+
+      return { user: data.user, student: data.student, instructor: data.instructor };
+    } catch (err: any) {
+      console.warn('Lookup user login note:', err.message);
+      return null;
+    }
+  },
+
   // --- USER PROFILES ---
   async getUserProfile(uid: string) {
     const path = `users/${uid}`;
