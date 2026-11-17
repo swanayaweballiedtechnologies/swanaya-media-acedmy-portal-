@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth } from '../firebase';
-import { SwanayaDatabase, User, Student, Instructor } from '../db/mockDb';
+import { SwanayaDatabase, User, Student, Instructor, Course } from '../db/mockDb';
 
 export enum OperationType {
   CREATE = 'create',
@@ -422,26 +422,134 @@ export const academyService = {
     }
   },
 
-  // --- COURSES ---
-  async getCourses() {
-    const path = 'courses';
+  // --- COURSES (ADMIN TO FRONTEND & MULTI-DEVICE PERSISTENCE) ---
+  async getCourses(): Promise<Course[]> {
+    let cloudCourses: Course[] = [];
+    // 1. Fetch from server persistent store & Admin Firestore
     try {
-      const q = query(collection(db, path));
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
+      const res = await fetch('/api/courses');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.courses) && data.courses.length > 0) {
+          cloudCourses = data.courses;
+        }
+      }
+    } catch (e) {
+      console.warn('API courses fetch notice:', e);
     }
+
+    // 2. Fallback to client Firestore if API was unreachable or empty
+    if (cloudCourses.length === 0) {
+      try {
+        const q = query(collection(db, 'courses'));
+        const snapshot = await getDocs(q);
+        const fsCourses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Course[];
+        if (fsCourses.length > 0) {
+          cloudCourses = fsCourses;
+        }
+      } catch (err) {
+        console.warn('Firestore direct getCourses notice:', err);
+      }
+    }
+
+    // 3. Fallback to local store
+    if (cloudCourses.length === 0) {
+      cloudCourses = SwanayaDatabase.get<Course[]>('courses') || [];
+    }
+
+    // Always keep local storage updated so front-end components have instant access
+    if (cloudCourses.length > 0) {
+      SwanayaDatabase.set('courses', cloudCourses);
+    }
+    return cloudCourses;
   },
 
-  async createCourse(course: any) {
-    const path = 'courses';
+  async createCourse(course: Partial<Course> & { id?: string; name?: string; code?: string }): Promise<string> {
+    const courseId = course.id || `c-${Date.now()}`;
+    const sanitized: Course = {
+      id: courseId,
+      code: (course.code || 'SMA-NEW').trim().toUpperCase(),
+      name: (course.name || (course as any).title || 'New Academy Program').trim(),
+      description: course.description || '',
+      duration: course.duration || '6 Months',
+      level: course.level || 'DIPLOMA',
+      eligibility: course.eligibility || '12th Standard or Equivalent',
+      fee: Number(course.fee ?? (course as any).fees ?? 0),
+      mode: course.mode || 'PHYSICAL',
+      coordinator: course.coordinator || 'Devika Menon',
+      status: course.status || 'ACTIVE',
+      thumbnailUrl: course.thumbnailUrl || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80',
+      learningObjectives: Array.isArray(course.learningObjectives) && course.learningObjectives.length > 0 
+        ? course.learningObjectives 
+        : [
+          'Master core concepts and tools',
+          'Build production-ready portfolios'
+        ],
+      careerOutcomes: Array.isArray(course.careerOutcomes) && course.careerOutcomes.length > 0
+        ? course.careerOutcomes
+        : [
+          'Industry Professional',
+          'Certified Media Specialist'
+        ]
+    };
+
+    // 1. Immediately update SwanayaDatabase so front-end gets instant update
+    const localCourses = SwanayaDatabase.get<Course[]>('courses') || [];
+    const idx = localCourses.findIndex(c => c.id === courseId || (sanitized.code && c.code === sanitized.code));
+    let updated: Course[];
+    if (idx >= 0) {
+      updated = localCourses.map((c, i) => i === idx ? { ...c, ...sanitized } : c);
+    } else {
+      updated = [...localCourses, sanitized];
+    }
+    SwanayaDatabase.set('courses', updated);
+
+    // 2. Call backend server endpoint (disk store + Admin Firestore)
     try {
-      const docRef = doc(collection(db, path));
-      await setDoc(docRef, { ...course, id: docRef.id, createdAt: serverTimestamp() });
-      return docRef.id;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, path);
+      const res = await fetch('/api/courses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sanitized)
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result?.course?.id) {
+          return result.course.id;
+        }
+      }
+    } catch (e) {
+      console.warn('API /api/courses POST notice:', e);
+    }
+
+    // 3. Direct client Firestore write fallback
+    try {
+      const docRef = doc(db, 'courses', courseId);
+      await setDoc(docRef, { ...sanitized, updatedAt: new Date().toISOString() }, { merge: true });
+    } catch (fsErr) {
+      console.warn('Client Firestore course write notice:', fsErr);
+    }
+
+    return courseId;
+  },
+
+  async updateCourse(courseId: string, updateData: Partial<Course>) {
+    return this.createCourse({ ...updateData, id: courseId });
+  },
+
+  async deleteCourse(courseId: string) {
+    const local = SwanayaDatabase.get<Course[]>('courses') || [];
+    SwanayaDatabase.set('courses', local.filter(c => c.id !== courseId));
+
+    try {
+      await fetch(`/api/courses/${courseId}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('API delete course notice:', e);
+    }
+
+    try {
+      await deleteDoc(doc(db, 'courses', courseId));
+    } catch (err) {
+      console.warn('Firestore delete course notice:', err);
     }
   },
 

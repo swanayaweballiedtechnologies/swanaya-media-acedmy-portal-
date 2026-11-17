@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BookOpen, Star, CheckCircle2, Phone, Mail, MapPin, Sparkles, Send, 
   GraduationCap, Code, Video, Globe, Terminal, Calendar, User, ExternalLink, ArrowUpRight, AlertCircle, X, MessageSquarePlus, Film,
@@ -75,6 +75,47 @@ export default function PublicLanding({
     mergeFrontPage(SwanayaDatabase.get<FrontPageConfig>('frontPageConfig'))
   );
   const [academySettings] = useState<AcademySettings>(() => SwanayaDatabase.get<AcademySettings>('settings'));
+
+  // Reactive state for courses synced from database (Admin -> Public Landing)
+  const [activeCourses, setActiveCourses] = useState<Course[]>(() => {
+    if (Array.isArray(courses) && courses.length > 0) return courses;
+    const local = SwanayaDatabase.get<Course[]>('courses');
+    return Array.isArray(local) ? local : [];
+  });
+
+  useEffect(() => {
+    if (Array.isArray(courses) && courses.length > 0) {
+      setActiveCourses(courses);
+    }
+  }, [courses]);
+
+  useEffect(() => {
+    // 1. Fetch courses from database (persistent API + Firestore)
+    academyService.getCourses().then((fetched) => {
+      if (Array.isArray(fetched) && fetched.length > 0) {
+        setActiveCourses(fetched);
+      }
+    }).catch((err) => console.warn('PublicLanding courses fetch notice:', err));
+
+    // 2. Reactively update whenever admin saves a course
+    const handleCoursesSync = (e: any) => {
+      if (!e?.detail?.key || e.detail.key === 'courses') {
+        const fresh = SwanayaDatabase.get<Course[]>('courses');
+        if (Array.isArray(fresh) && fresh.length > 0) {
+          setActiveCourses(fresh);
+        }
+      }
+    };
+    window.addEventListener('sma-autosave', handleCoursesSync);
+    return () => window.removeEventListener('sma-autosave', handleCoursesSync);
+  }, []);
+
+  const displayCourses = useMemo(() => {
+    if (activeCourses.length > 0) return activeCourses;
+    if (Array.isArray(courses) && courses.length > 0) return courses;
+    return [];
+  }, [activeCourses, courses]);
+
   const [blogs, setBlogs] = useState<any[]>([]);
   const [loadingBlogs, setLoadingBlogs] = useState(true);
   const [selectedLandingBlog, setSelectedLandingBlog] = useState<any | null>(null);
@@ -83,7 +124,7 @@ export default function PublicLanding({
   const [isReviewFormOpen, setIsReviewFormOpen] = useState(false);
   const [reviewForm, setReviewForm] = useState({
     authorName: '',
-    courseId: courses[0]?.id || 'general-academy',
+    courseId: displayCourses[0]?.id || courses[0]?.id || 'general-academy',
     rating: 5,
     title: '',
     comment: ''
@@ -187,7 +228,7 @@ export default function PublicLanding({
     name: '',
     email: '',
     phone: '',
-    courseId: courses[0]?.id || 'c-1',
+    courseId: displayCourses[0]?.id || courses[0]?.id || 'c-1',
     qualification: '',
     preferredBatch: 'ADWDVC-2026-A',
     message: ''
@@ -305,7 +346,7 @@ export default function PublicLanding({
       return;
     }
 
-    const matchedCourse = courses.find((c) => c.id === reviewForm.courseId);
+    const matchedCourse = displayCourses.find((c) => c.id === reviewForm.courseId);
     const courseName = matchedCourse?.name || 'General Academy Experience';
     const nowIso = new Date().toISOString();
     const newReview: AcademyReview = {
@@ -336,7 +377,7 @@ export default function PublicLanding({
       setReviews((prev) => [newReview, ...prev]);
       setReviewForm({
         authorName: '',
-        courseId: courses[0]?.id || 'general-academy',
+        courseId: displayCourses[0]?.id || courses[0]?.id || 'general-academy',
         rating: 5,
         title: '',
         comment: ''
@@ -382,7 +423,7 @@ export default function PublicLanding({
           name: '',
           email: '',
           phone: '',
-          courseId: courses[0]?.id || 'c-1',
+          courseId: displayCourses[0]?.id || courses[0]?.id || 'c-1',
           qualification: '',
           preferredBatch: 'ADWDVC-2026-A',
           message: ''
@@ -734,7 +775,7 @@ export default function PublicLanding({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {courses.map((course) => (
+            {displayCourses.map((course) => (
               <div key={course.id} className="bg-slate-900/40 border border-slate-800/80 rounded-lg p-8 hover:border-amber-500/20 transition-all flex flex-col justify-between group">
                 <div className="space-y-4">
                   <div className="flex justify-between items-start">
@@ -930,7 +971,7 @@ export default function PublicLanding({
                     onChange={(e) => setReviewForm({ ...reviewForm, courseId: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-400"
                   >
-                    {courses.map((c) => (
+                    {displayCourses.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                     <option value="general-academy">General Academy Experience</option>
@@ -1279,7 +1320,7 @@ export default function PublicLanding({
                         onChange={(e) => setFormData({...formData, courseId: e.target.value})}
                         className="w-full bg-slate-950 border border-slate-800 rounded px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-amber-400"
                       >
-                        {courses.map((course) => (
+                        {displayCourses.map((course) => (
                           <option key={course.id} value={course.id}>{course.name}</option>
                         ))}
                       </select>

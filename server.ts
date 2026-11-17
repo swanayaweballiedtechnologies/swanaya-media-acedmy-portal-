@@ -492,6 +492,260 @@ app.post('/api/sync/login', async (req, res) => {
   }
 });
 
+// --- PERSISTENT COURSES STORAGE (MULTI-DEVICE & ADMIN-TO-FRONTEND PERSISTENCE) ---
+const COURSES_FILE = path.resolve(DATA_DIR, 'persistent_courses.json');
+
+const DEFAULT_SEED_COURSES = [
+  {
+    id: "c-1",
+    code: "SMA-AIMCD",
+    name: "Advanced Diploma in AI Media & Creative Direction",
+    description: "Master modern AI video production, narrative storytelling, generative media workflows, visual effects, and digital branding for high-impact commercial campaigns.",
+    duration: "12 Months",
+    level: "DIPLOMA",
+    eligibility: "12th Standard or Equivalent",
+    fee: 75000,
+    mode: "PHYSICAL",
+    coordinator: "Devika Menon",
+    status: "ACTIVE",
+    thumbnailUrl: "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?auto=format&fit=crop&w=800&q=80",
+    learningObjectives: [
+      "Generative media models & prompting for production",
+      "Cinematic direction, color grading, and video editing",
+      "AI-driven commercial campaign design & delivery"
+    ],
+    careerOutcomes: ["Creative Director", "AI Media Specialist", "Visual Producer"]
+  },
+  {
+    id: "c-2",
+    code: "SMA-ADWDVC",
+    name: "Advanced Diploma in Full-Stack Web Development & Vibe Coding",
+    description: "Industry-aligned immersive program combining modern frontend architecture, scalable cloud microservices, real-time reactive apps, and rapid AI-assisted vibe coding.",
+    duration: "12 Months",
+    level: "DIPLOMA",
+    eligibility: "12th Standard / Graduate",
+    fee: 85000,
+    mode: "HYBRID",
+    coordinator: "Aadithyan M Menon",
+    status: "ACTIVE",
+    thumbnailUrl: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80",
+    learningObjectives: [
+      "TypeScript, React, Next.js, and modern full-stack web engineering",
+      "Cloud architecture, PostgreSQL, and scalable API services",
+      "Vibe coding with modern generative AI coding tools"
+    ],
+    careerOutcomes: ["Full-Stack Software Engineer", "Frontend Architect", "Tech Lead"]
+  },
+  {
+    id: "c-3",
+    code: "SMA-DJMS",
+    name: "Advanced Diploma in Digital Journalism & Media Science",
+    description: "Comprehensive training in multi-platform news reporting, investigative journalism, digital ethics, podcast production, and high-velocity digital broadcasting.",
+    duration: "6 Months",
+    level: "DIPLOMA",
+    eligibility: "Any Degree or 12th Standard",
+    fee: 55000,
+    mode: "PHYSICAL",
+    coordinator: "Dr. Lakshmi Warrier",
+    status: "ACTIVE",
+    thumbnailUrl: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80",
+    learningObjectives: [
+      "Digital investigative reporting & source verification",
+      "Broadcast anchoring, podcasting, and media law",
+      "Social media distribution and audience analytics"
+    ],
+    careerOutcomes: ["Digital Journalist", "News Anchor", "Editorial Producer"]
+  },
+  {
+    id: "c-4",
+    code: "SMA-VFX",
+    name: "Professional Certificate in Video Editing & Motion VFX",
+    description: "Hands-on studio masterclass focused on Adobe Premiere Pro, After Effects, DaVinci Resolve, motion typography, and sound design for television and streaming platforms.",
+    duration: "3 Months",
+    level: "ADVANCED",
+    eligibility: "10th Standard or Above",
+    fee: 35000,
+    mode: "PHYSICAL",
+    coordinator: "Rahul R",
+    status: "ACTIVE",
+    thumbnailUrl: "https://images.unsplash.com/photo-1536240478700-b869070f9279?auto=format&fit=crop&w=800&q=80",
+    learningObjectives: [
+      "Non-linear multi-camera editing and speed cutting",
+      "Motion graphics, VFX compositing, and green screen keys",
+      "Studio color grading and spatial audio mastering"
+    ],
+    careerOutcomes: ["Motion Graphics Artist", "Video Editor", "Post-Production Lead"]
+  }
+];
+
+interface PersistentCoursesStore {
+  courses: any[];
+  updatedAt: string;
+}
+
+function readCoursesStore(): PersistentCoursesStore {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(COURSES_FILE)) {
+      const raw = fs.readFileSync(COURSES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.courses) && parsed.courses.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading persistent courses file:', e);
+  }
+  return {
+    courses: [...DEFAULT_SEED_COURSES],
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function writeCoursesStore(store: PersistentCoursesStore) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(COURSES_FILE, JSON.stringify(store, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error writing persistent courses file:', e);
+  }
+}
+
+// 4. Fetch all courses (persisted across restarts, devices, and synchronized with Firestore)
+app.get('/api/courses', async (req, res) => {
+  try {
+    const store = readCoursesStore();
+
+    if (db) {
+      try {
+        const snap = await db.collection('courses').get();
+        if (!snap.empty) {
+          snap.docs.forEach((doc: any) => {
+            const data = { id: doc.id, ...doc.data() };
+            const idx = store.courses.findIndex((c: any) => c.id === data.id || (data.code && c.code === data.code));
+            if (idx >= 0) {
+              store.courses[idx] = { ...store.courses[idx], ...data };
+            } else {
+              store.courses.push(data);
+            }
+          });
+        } else {
+          // Initial seed of Firestore courses collection if empty
+          for (const c of store.courses) {
+            await db.collection('courses').doc(c.id).set(c, { merge: true });
+          }
+        }
+      } catch (cloudErr: any) {
+        console.warn('Firestore courses fetch notice:', cloudErr.message);
+      }
+    }
+
+    writeCoursesStore(store);
+    return res.json({
+      success: true,
+      courses: store.courses,
+      count: store.courses.length,
+      updatedAt: store.updatedAt
+    });
+  } catch (err: any) {
+    console.error('Error in GET /api/courses:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 5. Create or update course (Admin Panel -> Database -> Instant Front-End reflection)
+app.post('/api/courses', async (req, res) => {
+  try {
+    const course = req.body;
+    if (!course || (!course.name && !course.title)) {
+      return res.status(400).json({ success: false, error: 'Course name is required.' });
+    }
+
+    const courseId = course.id || `c-${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    const sanitizedCourse = {
+      ...course,
+      id: courseId,
+      code: (course.code || 'SMA-NEW').trim().toUpperCase(),
+      name: (course.name || course.title || 'New Academy Program').trim(),
+      title: (course.title || course.name || 'New Academy Program').trim(),
+      description: course.description || '',
+      duration: course.duration || '6 Months',
+      level: course.level || 'DIPLOMA',
+      eligibility: course.eligibility || '12th Standard or Equivalent',
+      fee: Number(course.fee ?? course.fees ?? 0),
+      fees: Number(course.fee ?? course.fees ?? 0),
+      mode: course.mode || 'PHYSICAL',
+      coordinator: course.coordinator || 'Academic Director',
+      status: course.status || 'ACTIVE',
+      thumbnailUrl: course.thumbnailUrl || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80',
+      learningObjectives: Array.isArray(course.learningObjectives) ? course.learningObjectives : [
+        'Master core concepts and tools',
+        'Build production-ready portfolios'
+      ],
+      careerOutcomes: Array.isArray(course.careerOutcomes) ? course.careerOutcomes : [
+        'Industry Professional',
+        'Certified Media Specialist'
+      ],
+      updatedAt: nowIso,
+      createdAt: course.createdAt || nowIso
+    };
+
+    const store = readCoursesStore();
+    const existingIndex = store.courses.findIndex((c: any) => c.id === courseId || (sanitizedCourse.code && c.code === sanitizedCourse.code));
+    if (existingIndex >= 0) {
+      store.courses[existingIndex] = { ...store.courses[existingIndex], ...sanitizedCourse };
+    } else {
+      store.courses.push(sanitizedCourse);
+    }
+    store.updatedAt = nowIso;
+    writeCoursesStore(store);
+
+    // Save to Firestore via Firebase Admin SDK
+    if (db) {
+      try {
+        await db.collection('courses').doc(courseId).set(sanitizedCourse, { merge: true });
+      } catch (cloudErr: any) {
+        console.warn('Firestore Admin course write notice:', cloudErr.message);
+      }
+    }
+
+    console.log(`[Courses] Course saved to database: "${sanitizedCourse.name}" (${sanitizedCourse.code})`);
+    return res.json({ success: true, course: sanitizedCourse });
+  } catch (err: any) {
+    console.error('Error in POST /api/courses:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. Delete a course
+app.delete('/api/courses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const store = readCoursesStore();
+    store.courses = store.courses.filter((c: any) => c.id !== id);
+    store.updatedAt = new Date().toISOString();
+    writeCoursesStore(store);
+
+    if (db) {
+      try {
+        await db.collection('courses').doc(id).delete();
+      } catch (cloudErr: any) {
+        console.warn('Firestore Admin course delete notice:', cloudErr.message);
+      }
+    }
+
+    return res.json({ success: true, message: `Course ${id} deleted` });
+  } catch (err: any) {
+    console.error('Error in DELETE /api/courses:', err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Express route to handle registration welcome emails
 app.post('/api/registrations/welcome', async (req, res) => {
   try {

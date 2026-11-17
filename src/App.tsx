@@ -65,8 +65,21 @@ export default function App() {
       }
     }).catch((err) => console.warn('Cloud profiles boot sync deferred:', err));
 
-    const handleAutoSave = () => {
+    // Pull all courses from database so courses appear immediately across all systems
+    academyService.getCourses().then((courses) => {
+      if (Array.isArray(courses) && courses.length > 0) {
+        setCoursesList(courses);
+      }
+    }).catch((err) => console.warn('Courses boot sync deferred:', err));
+
+    const handleAutoSave = (e?: any) => {
       setAutoSaveToast(true);
+      if (!e?.detail?.key || e.detail.key === 'courses') {
+        const fresh = SwanayaDatabase.get<Course[]>("courses");
+        if (Array.isArray(fresh) && fresh.length > 0) {
+          setCoursesList(fresh);
+        }
+      }
       const timer = setTimeout(() => setAutoSaveToast(false), 2500);
       return () => clearTimeout(timer);
     };
@@ -540,7 +553,9 @@ export default function App() {
   }
 
   if (currentView === 'landing') {
-    const listCourses = SwanayaDatabase.get<Course[]>("courses");
+    const listCourses = Array.isArray(coursesList) && coursesList.length > 0 
+      ? coursesList 
+      : (SwanayaDatabase.get<Course[]>("courses") || []);
     return (
       <PublicLanding 
         courses={listCourses}

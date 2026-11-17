@@ -1,0 +1,101 @@
+{
+  "courses": [
+    {
+      "id": "c-1",
+      "code": "SMA-AIMCD",
+      "name": "Advanced Diploma in AI Media & Creative Direction",
+      "description": "Master modern AI video production, narrative storytelling, generative media workflows, visual effects, and digital branding for high-impact commercial campaigns.",
+      "duration": "12 Months",
+      "level": "DIPLOMA",
+      "eligibility": "12th Standard or Equivalent",
+      "fee": 75000,
+      "mode": "PHYSICAL",
+      "coordinator": "Devika Menon",
+      "status": "ACTIVE",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?auto=format&fit=crop&w=800&q=80",
+      "learningObjectives": [
+        "Generative media models & prompting for production",
+        "Cinematic direction, color grading, and video editing",
+        "AI-driven commercial campaign design & delivery"
+      ],
+      "careerOutcomes": [
+        "Creative Director",
+        "AI Media Specialist",
+        "Visual Producer"
+      ]
+    },
+    {
+      "id": "c-2",
+      "code": "SMA-ADWDVC",
+      "name": "Advanced Diploma in Full-Stack Web Development & Vibe Coding",
+      "description": "Industry-aligned immersive program combining modern frontend architecture, scalable cloud microservices, real-time reactive apps, and rapid AI-assisted vibe coding.",
+      "duration": "12 Months",
+      "level": "DIPLOMA",
+      "eligibility": "12th Standard / Graduate",
+      "fee": 85000,
+      "mode": "HYBRID",
+      "coordinator": "Aadithyan M Menon",
+      "status": "ACTIVE",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80",
+      "learningObjectives": [
+        "TypeScript, React, Next.js, and modern full-stack web engineering",
+        "Cloud architecture, PostgreSQL, and scalable API services",
+        "Vibe coding with modern generative AI coding tools"
+      ],
+      "careerOutcomes": [
+        "Full-Stack Software Engineer",
+        "Frontend Architect",
+        "Tech Lead"
+      ]
+    },
+    {
+      "id": "c-3",
+      "code": "SMA-DJMS",
+      "name": "Advanced Diploma in Digital Journalism & Media Science",
+      "description": "Comprehensive training in multi-platform news reporting, investigative journalism, digital ethics, podcast production, and high-velocity digital broadcasting.",
+      "duration": "6 Months",
+      "level": "DIPLOMA",
+      "eligibility": "Any Degree or 12th Standard",
+      "fee": 55000,
+      "mode": "PHYSICAL",
+      "coordinator": "Dr. Lakshmi Warrier",
+      "status": "ACTIVE",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80",
+      "learningObjectives": [
+        "Digital investigative reporting & source verification",
+        "Broadcast anchoring, podcasting, and media law",
+        "Social media distribution and audience analytics"
+      ],
+      "careerOutcomes": [
+        "Digital Journalist",
+        "News Anchor",
+        "Editorial Producer"
+      ]
+    },
+    {
+      "id": "c-4",
+      "code": "SMA-VFX",
+      "name": "Professional Certificate in Video Editing & Motion VFX",
+      "description": "Hands-on studio masterclass focused on Adobe Premiere Pro, After Effects, DaVinci Resolve, motion typography, and sound design for television and streaming platforms.",
+      "duration": "3 Months",
+      "level": "ADVANCED",
+      "eligibility": "10th Standard or Above",
+      "fee": 35000,
+      "mode": "PHYSICAL",
+      "coordinator": "Rahul R",
+      "status": "ACTIVE",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1536240478700-b869070f9279?auto=format&fit=crop&w=800&q=80",
+      "learningObjectives": [
+        "Non-linear multi-camera editing and speed cutting",
+        "Motion graphics, VFX compositing, and green screen keys",
+        "Studio color grading and spatial audio mastering"
+      ],
+      "careerOutcomes": [
+        "Motion Graphics Artist",
+        "Video Editor",
+        "Post-Production Lead"
+      ]
+    }
+  ],
+  "updatedAt": "2026-11-17T15:19:03.557Z"
+}

@@ -36,14 +36,27 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },
         "duration": { "type": "string" },
+        "fee": { "type": "number" },
         "fees": { "type": "number" },
+        "level": { "type": "string" },
+        "mode": { "type": "string" },
+        "eligibility": { "type": "string" },
+        "coordinator": { "type": "string" },
+        "status": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "learningObjectives": { "type": "array" },
+        "careerOutcomes": { "type": "array" },
         "brochureUrl": { "type": "string" },
-        "category": { "type": "string" }
+        "category": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       },
-      "required": ["id", "title"]
+      "required": ["id"]
     },
     "Blog": {
       "title": "Blog Post",

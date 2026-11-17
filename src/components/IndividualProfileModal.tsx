@@ -427,7 +427,7 @@ export default function IndividualProfileModal({
       let cloudSynced = false;
       try {
         const studentPayload = studentObj ? { ...studentObj, ...localPatch } : null;
-        const instructorPayload = instructorObj ? { ...instructorObj, name: finalName, ...localPatch } : null;
+        const instructorPayload = instructorObj ? { ...instructorObj, ...localPatch } : null;
         await academyService.syncProfileToCloud(updatedUserRecord, studentPayload, instructorPayload);
         cloudSynced = true;
       } catch (syncErr: any) {

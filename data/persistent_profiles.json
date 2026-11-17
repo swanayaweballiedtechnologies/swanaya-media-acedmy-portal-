@@ -1,0 +1,65 @@
+{
+  "users": [
+    {
+      "id": "usr-md",
+      "username": "aadithyan",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "name": "AADITHYAN M MENON",
+      "role": "MD",
+      "avatarUrl": "https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon",
+      "status": "ACTIVE",
+      "createdAt": "2026-01-01",
+      "isVerified": true,
+      "phone": "+91 94460 55555",
+      "bio": "Managing Director & Academic Visionary at Swanaya Media Academy",
+      "updatedAt": "2026-11-17T15:19:11.980Z"
+    },
+    {
+      "id": "usr-principal",
+      "username": "principal",
+      "email": "principal@swanayamedia.com",
+      "name": "Academy Principal",
+      "role": "PRINCIPAL",
+      "avatarUrl": "https://api.dicebear.com/7.x/avataaars/svg?seed=Principal",
+      "status": "ACTIVE",
+      "createdAt": "2026-01-01",
+      "isVerified": true
+    },
+    {
+      "id": "usr-navven",
+      "username": "navven",
+      "email": "navven.admin@swanayamedia.com",
+      "name": "NAVVEN (Administrator)",
+      "role": "ADMIN",
+      "avatarUrl": "https://api.dicebear.com/7.x/avataaars/svg?seed=Naveen",
+      "status": "ACTIVE",
+      "createdAt": "2026-01-02",
+      "isVerified": true
+    },
+    {
+      "id": "usr-reviewer",
+      "username": "reviewer",
+      "email": "reviewer@swanayamedia.com",
+      "name": "Academic Reviewer",
+      "role": "REVIEWER",
+      "avatarUrl": "https://api.dicebear.com/7.x/avataaars/svg?seed=Reviewer",
+      "status": "ACTIVE",
+      "createdAt": "2026-01-05",
+      "isVerified": true
+    },
+    {
+      "id": "usr-alumni",
+      "username": "alumni",
+      "email": "alumni@swanayamedia.com",
+      "name": "Alumni Graduate",
+      "role": "ALUMNI",
+      "avatarUrl": "https://api.dicebear.com/7.x/avataaars/svg?seed=Alumni",
+      "status": "ACTIVE",
+      "createdAt": "2026-01-08",
+      "isVerified": true
+    }
+  ],
+  "students": [],
+  "instructors": [],
+  "updatedAt": "2026-11-17T15:19:11.980Z"
+}
