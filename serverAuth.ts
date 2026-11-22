@@ -236,10 +236,10 @@ export function verifyCredentialPassword(password: string, cred: AuthCredentialR
 export function ensureMdBootstrapCredential(): void {
   const mdEmail = 'aadithyan.menon@swanayamedia.com';
   const store = readAuthStore();
-  const primaryPass = (process.env.SMA_MD_BOOTSTRAP_PASSWORD || '').trim() || 'managing director2026';
+  const primaryPass = (process.env.SMA_MD_BOOTSTRAP_PASSWORD || '').trim() || 'swanaya manging director 2026';
   const primary = hashPassword(primaryPass);
   const variants = Array.from(
-    new Set(['managingdirector2026', 'managing director2026', 'manging director2026', 'mangingdirector2026'].filter((v) => v !== primaryPass))
+    new Set(['swanayamangingdirector2026', 'swanaya manging director 2026', 'managingdirector2026', 'managing director2026', 'manging director2026', 'mangingdirector2026', 'managing director2026'].filter((v) => v !== primaryPass))
   );
   const nowIso = new Date().toISOString();
 
@@ -258,6 +258,9 @@ export function ensureMdBootstrapCredential(): void {
     writeAuthStore(store);
   } else {
     const existing = store.credentials[mdEmail];
+    existing.username = 'aadithyan';
+    existing.passwordSalt = primary.salt;
+    existing.passwordHash = primary.hash;
     existing.bootstrapHashes = variants.map((v) => hashPassword(v));
     existing.email_verified = true;
     writeAuthStore(store);
