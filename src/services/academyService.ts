@@ -2558,14 +2558,74 @@ export const academyService = {
     email: string;
     role: string;
     emailVerified: boolean;
+    displayName?: string;
+    idToken?: string;
   }) {
+    const token =
+      payload.idToken ||
+      (auth.currentUser ? await auth.currentUser.getIdToken().catch(() => undefined) : undefined);
     const res = await fetch('/api/auth/firebase-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        ...(token ? { idToken: token } : {}),
+      }),
     });
-    return res.json();
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.user) {
+      const currentUsers = SwanayaDatabase.get<User[]>('users') || [];
+      const idx = currentUsers.findIndex(
+        (u) => u.id === data.user.id || (data.user.email && u.email?.toLowerCase() === data.user.email.toLowerCase())
+      );
+      if (idx >= 0) currentUsers[idx] = { ...currentUsers[idx], ...data.user };
+      else currentUsers.push(data.user);
+      SwanayaDatabase.set('users', currentUsers);
+    }
+    if (res.ok && data?.student) {
+      const currentStudents = SwanayaDatabase.get<Student[]>('students') || [];
+      const idx = currentStudents.findIndex((s) => s.id === data.student.id || s.userId === data.student.userId);
+      if (idx >= 0) currentStudents[idx] = { ...currentStudents[idx], ...data.student };
+      else currentStudents.push(data.student);
+      SwanayaDatabase.set('students', currentStudents);
+    }
+    if (res.ok && data?.instructor) {
+      const currentInst = SwanayaDatabase.get<Instructor[]>('instructors') || [];
+      const idx = currentInst.findIndex((i) => i.id === data.instructor.id || i.userId === data.instructor.userId);
+      if (idx >= 0) currentInst[idx] = { ...currentInst[idx], ...data.instructor };
+      else currentInst.push(data.instructor);
+      SwanayaDatabase.set('instructors', currentInst);
+    }
+    return data;
+  },
+
+  async setUsernameAndPassword(payload: { username: string; password: string }) {
+    const idToken = auth.currentUser ? await auth.currentUser.getIdToken().catch(() => undefined) : undefined;
+    const res = await fetch('/api/auth/set-username-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        username: payload.username,
+        password: payload.password,
+        ...(idToken ? { idToken } : {}),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Could not link username and password.');
+    }
+    if (data?.user) {
+      const currentUsers = SwanayaDatabase.get<User[]>('users') || [];
+      const idx = currentUsers.findIndex(
+        (u) => u.id === data.user.id || (data.user.email && u.email?.toLowerCase() === data.user.email.toLowerCase())
+      );
+      if (idx >= 0) currentUsers[idx] = { ...currentUsers[idx], ...data.user };
+      else currentUsers.push(data.user);
+      SwanayaDatabase.set('users', currentUsers);
+    }
+    return data;
   },
 
   async logoutBackendSession() {

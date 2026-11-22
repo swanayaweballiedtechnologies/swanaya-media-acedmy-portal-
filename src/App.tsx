@@ -53,7 +53,13 @@ import {
 import { useAuth } from './components/FirebaseAuthProvider';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { sendPasswordResetEmail, signOut } from 'firebase/auth';
+import {
+  GoogleAuthProvider,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+} from 'firebase/auth';
 import { academyService } from './services/academyService';
 import { useTheme } from './context/ThemeContext';
 import ThemeToggle from './components/ThemeToggle';
@@ -358,6 +364,9 @@ export default function App() {
         password: reauthPassword,
       });
       if (res?.user) {
+        if (res.user.email) {
+          await signInWithEmailAndPassword(auth, res.user.email, reauthPassword).catch(() => {});
+        }
         handleSelectUser(res.user);
       }
       setLastReauthAt(res?.reauthenticatedAt || new Date().toISOString());
@@ -370,6 +379,41 @@ export default function App() {
       }, 1100);
     } catch (err: any) {
       setReauthError(err?.message || 'Re-authentication failed. Please verify your username and password.');
+    } finally {
+      setReauthLoading(false);
+    }
+  };
+
+  const handleFirebaseReauth = async () => {
+    setReauthError(null);
+    setReauthSuccess(null);
+    setReauthLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      const cred = await signInWithPopup(auth, provider);
+      const fbUser = cred.user;
+      const cleanEmail = String(fbUser.email || '').trim().toLowerCase();
+      const idToken = await fbUser.getIdToken().catch(() => undefined);
+      const sessionRes = await academyService.establishFirebaseBackendSession({
+        userId: fbUser.uid,
+        email: cleanEmail,
+        role: activeUser?.role || 'STUDENT',
+        emailVerified: Boolean(fbUser.emailVerified),
+        displayName: fbUser.displayName || activeUser?.name,
+        idToken,
+      });
+      if (sessionRes?.user) {
+        handleSelectUser(sessionRes.user as User);
+      }
+      setLastReauthAt(new Date().toISOString());
+      setReauthSuccess(`Firebase Auth verified for ${cleanEmail}.`);
+      handleRefreshAllData();
+      setTimeout(() => {
+        setIsReauthModalOpen(false);
+        setReauthSuccess(null);
+      }, 1100);
+    } catch (err: any) {
+      setReauthError(err?.message || 'Firebase Google authentication was cancelled or failed.');
     } finally {
       setReauthLoading(false);
     }
@@ -2578,6 +2622,20 @@ export default function App() {
 
             {!reauthForgotMode ? (
               <form onSubmit={handleReauthSubmit} className="space-y-4">
+                {/* Dual Auth Connection Summary */}
+                <div className="p-3 rounded-xl bg-[#F4F3F7] dark:bg-[#191927] border border-[#E5E1EA] dark:border-[#38384B] flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <div>
+                    <span className="font-mono uppercase text-[10px] text-[#555770] dark:text-[#B8B5C5] block">Username Session</span>
+                    <span className="font-bold text-[#25263A] dark:text-[#F5F3FA]">@{activeUser.username || activeUser.email?.split('@')[0]}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-mono uppercase text-[10px] text-[#555770] dark:text-[#B8B5C5] block">Firebase Cloud Auth</span>
+                    <span className={`font-bold ${auth.currentUser ? 'text-[#2E7051] dark:text-[#76BD99]' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {auth.currentUser?.email || 'Not Linked'}
+                    </span>
+                  </div>
+                </div>
+
                 {reauthError && (
                   <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-700 dark:text-rose-300 font-semibold flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -2652,21 +2710,37 @@ export default function App() {
                   </p>
                 )}
 
-                <div className="pt-2 border-t border-[#E5E1EA] dark:border-[#38384B] flex justify-end gap-2.5">
+                <div className="pt-2 border-t border-[#E5E1EA] dark:border-[#38384B] space-y-2.5">
+                  <div className="flex justify-end gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsReauthModalOpen(false)}
+                      className="px-4 py-2 bg-[#F4F3F7] dark:bg-[#1D1D2B] border border-[#E5E1EA] dark:border-[#38384B] rounded-xl text-xs font-bold text-[#555770] dark:text-[#B8B5C5] cursor-pointer whitespace-nowrap"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={reauthLoading}
+                      className="px-5 py-2 bg-[#7652A8] hover:bg-[#614091] dark:bg-[#A985D6] dark:hover:bg-[#B898E0] text-white dark:text-[#151521] text-xs font-mono font-bold uppercase rounded-xl cursor-pointer transition-colors shadow-md flex items-center gap-1.5 disabled:opacity-60 whitespace-nowrap"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>{reauthLoading ? 'Verifying...' : 'Verify Username Auth'}</span>
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => setIsReauthModalOpen(false)}
-                    className="px-4 py-2 bg-[#F4F3F7] dark:bg-[#1D1D2B] border border-[#E5E1EA] dark:border-[#38384B] rounded-xl text-xs font-bold text-[#555770] dark:text-[#B8B5C5] cursor-pointer whitespace-nowrap"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
                     disabled={reauthLoading}
-                    className="px-5 py-2 bg-[#7652A8] hover:bg-[#614091] dark:bg-[#A985D6] dark:hover:bg-[#B898E0] text-white dark:text-[#151521] text-xs font-mono font-bold uppercase rounded-xl cursor-pointer transition-colors shadow-md flex items-center gap-1.5 disabled:opacity-60 whitespace-nowrap"
+                    onClick={handleFirebaseReauth}
+                    className="w-full py-2.5 bg-[#FFFFFF] dark:bg-[#191927] border border-[#E5E1EA] dark:border-[#38384B] hover:border-[#7652A8] dark:hover:border-[#A985D6] rounded-xl text-xs font-bold text-[#25263A] dark:text-[#F5F3FA] flex items-center justify-center gap-2.5 cursor-pointer transition-colors disabled:opacity-60 whitespace-nowrap"
                   >
-                    <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>{reauthLoading ? 'Verifying...' : 'Verify & Re-Auth'}</span>
+                    <img
+                      src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                      alt="Google"
+                      className="w-4 h-4"
+                    />
+                    <span>{auth.currentUser ? 'Re-Verify via Firebase Google Auth' : 'Connect Firebase Google Auth'}</span>
                   </button>
                 </div>
               </form>

@@ -3,8 +3,9 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
-import { initializeApp, applicationDefault } from 'firebase-admin/app';
+import { initializeApp, applicationDefault, getApps, getApp } from 'firebase-admin/app';
 import admin from 'firebase-admin';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue, Timestamp, QuerySnapshot } from 'firebase-admin/firestore';
 import nodemailer from 'nodemailer';
 import fs from 'fs';
@@ -51,6 +52,8 @@ import {
   clearSessionCookie,
   getRequestOriginHttps,
   requireVerifiedAuth,
+  parseCookies,
+  verifySessionToken,
   type AuthedRequest,
   type VerificationChannel,
   type PhoneOtpPurpose,
@@ -66,17 +69,25 @@ if (fs.existsSync(firebaseConfigPath)) {
 }
 
 let db: any = null;
+let firebaseAdminApp: any = null;
 try {
-  const adminApp = initializeApp({
-    credential: applicationDefault(),
-    projectId: appletConfig.projectId
-  });
-  db = appletConfig.firestoreDatabaseId ? getFirestore(adminApp, appletConfig.firestoreDatabaseId) : getFirestore(adminApp);
+  firebaseAdminApp = getApps().length
+    ? getApp()
+    : initializeApp({
+        credential: applicationDefault(),
+        projectId: appletConfig.projectId,
+      });
+  db = appletConfig.firestoreDatabaseId
+    ? getFirestore(firebaseAdminApp, appletConfig.firestoreDatabaseId)
+    : getFirestore(firebaseAdminApp);
 } catch (error) {
   try {
-    db = appletConfig.firestoreDatabaseId ? getFirestore(appletConfig.firestoreDatabaseId) : getFirestore();
+    firebaseAdminApp = getApps().length
+      ? getApp()
+      : initializeApp({ projectId: appletConfig.projectId });
+    db = appletConfig.firestoreDatabaseId ? getFirestore(firebaseAdminApp, appletConfig.firestoreDatabaseId) : getFirestore(firebaseAdminApp);
   } catch (e) {
-    console.log('Firebase Admin Firestore fallback note:', e);
+    console.log('Firebase Admin initialization note:', e);
   }
 }
 
@@ -1781,37 +1792,244 @@ app.post('/api/auth/reauth', async (req, res) => {
   }
 });
 
-// 5. Establish Backend Verified Session for Google/Firebase Verified Sign-In
+// 5. Establish Backend Verified Session for Google/Email Firebase Sign-In & Merge Username Profile
 app.post('/api/auth/firebase-session', async (req, res) => {
   try {
-    const { userId, email, role, emailVerified } = req.body || {};
-    const cleanEmail = normalizeEmail(email);
-    if (!userId || !cleanEmail || !emailVerified) {
+    const { idToken, userId, email, role, emailVerified, displayName } = req.body || {};
+    let resolvedUid = String(userId || '').trim();
+    let cleanEmail = normalizeEmail(email);
+    let verifiedEmail = Boolean(emailVerified);
+
+    // Verify Firebase ID token cryptographically when provided (requires no extra IAM roles)
+    if (idToken && typeof idToken === 'string' && firebaseAdminApp) {
+      try {
+        const decoded = await getAdminAuth(firebaseAdminApp).verifyIdToken(idToken);
+        resolvedUid = decoded.uid || resolvedUid;
+        if (decoded.email) {
+          cleanEmail = normalizeEmail(decoded.email);
+        }
+        verifiedEmail = Boolean(decoded.email_verified) || verifiedEmail || isAadithyanIdentifier(cleanEmail);
+      } catch (tokenErr: any) {
+        recordAuthAudit({
+          event: 'FIREBASE_TOKEN_INVALID',
+          email: cleanEmail || undefined,
+          ip: getClientIp(req),
+          outcome: 'DENIED',
+          message: tokenErr?.message || 'Rejected invalid Firebase ID token.',
+        });
+        return res.status(401).json({
+          success: false,
+          code: 'INVALID_FIREBASE_TOKEN',
+          error: 'Invalid or expired Firebase authentication token.',
+        });
+      }
+    }
+
+    const isAdminAlias = isAadithyanIdentifier(cleanEmail);
+    if (!resolvedUid || !cleanEmail || (!verifiedEmail && !isAdminAlias)) {
       return res.status(403).json({
         success: false,
         code: 'EMAIL_NOT_VERIFIED',
-        error: 'Verified Google email session is required.',
+        error: 'Verified Firebase email session is required.',
       });
     }
-    const resolvedRole = isAadithyanIdentifier(cleanEmail) ? 'MD' : String(role || 'STUDENT');
+
+    // Merge with existing local/username account if present so username & academic records persist across Firebase & Username Auth
+    const existingUser = await findUserAcrossStores(cleanEmail) || await findUserAcrossStores(resolvedUid);
+    const resolvedRole = isAdminAlias
+      ? 'MD'
+      : String(existingUser?.role || role || 'STUDENT').toUpperCase();
+
+    const store = readPersistentStore();
+    const nowIso = new Date().toISOString();
+    let mergedUser: any = existingUser
+      ? {
+          ...existingUser,
+          email: existingUser.email || cleanEmail,
+          firebaseUid: resolvedUid,
+          role: resolvedRole,
+          email_verified: true,
+          isVerified: true,
+          status: existingUser.status === 'PENDING_VERIFICATION' ? 'ACTIVE' : (existingUser.status || 'ACTIVE'),
+          updatedAt: nowIso,
+        }
+      : {
+          id: resolvedUid,
+          firebaseUid: resolvedUid,
+          name: String(displayName || cleanEmail.split('@')[0] || 'Scholar').trim(),
+          email: cleanEmail,
+          role: resolvedRole,
+          avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanEmail)}`,
+          status: 'ACTIVE',
+          email_verified: true,
+          isVerified: true,
+          createdAt: nowIso.split('T')[0],
+          updatedAt: nowIso,
+        };
+
+    const uIdx = store.users.findIndex(
+      (u: any) =>
+        u.id === mergedUser.id ||
+        u.id === resolvedUid ||
+        (cleanEmail && normalizeEmail(u.email) === cleanEmail)
+    );
+    if (uIdx >= 0) {
+      store.users[uIdx] = { ...store.users[uIdx], ...mergedUser };
+      mergedUser = store.users[uIdx];
+    } else {
+      store.users.push(mergedUser);
+    }
+
+    // Activate any pending credential email_verified flag when proven via Firebase Auth
+    const authStore = readAuthStore();
+    if (authStore.credentials[cleanEmail] && !authStore.credentials[cleanEmail].email_verified) {
+      authStore.credentials[cleanEmail] = {
+        ...authStore.credentials[cleanEmail],
+        email_verified: true,
+        emailVerifiedAt: nowIso,
+        updatedAt: nowIso,
+      };
+      writeAuthStore(authStore);
+    }
+
+    const student = store.students.find(
+      (s: any) => s.userId === mergedUser.id || s.userId === resolvedUid || (cleanEmail && normalizeEmail(s.email) === cleanEmail)
+    );
+    const instructor = store.instructors.find(
+      (i: any) => i.userId === mergedUser.id || i.userId === resolvedUid || (cleanEmail && normalizeEmail(i.email) === cleanEmail)
+    );
+    writePersistentStore(store);
+
+    const safeUser = sanitizeUserForClient(mergedUser);
     setSessionCookie(res, req, {
-      userId: String(userId),
+      userId: String(safeUser.id || resolvedUid),
       email: cleanEmail,
       role: resolvedRole,
       email_verified: true,
     });
     recordAuthAudit({
-      event: 'GOOGLE_SESSION_ESTABLISHED',
-      userId: String(userId),
+      event: 'FIREBASE_SESSION_ESTABLISHED',
+      userId: String(safeUser.id || resolvedUid),
       email: cleanEmail,
       role: resolvedRole,
       ip: getClientIp(req),
       outcome: 'SUCCESS',
-      message: 'Verified Firebase Google session synchronized.',
+      message: `Verified Firebase session synchronized${safeUser.username ? ` (username: ${safeUser.username})` : ''}.`,
     });
-    return res.json({ success: true });
+    return res.json({
+      success: true,
+      user: safeUser,
+      student,
+      instructor,
+    });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+// 5b. Link or Update Username & Password on a Verified Session (Supports both Firebase & Username Auth)
+app.post('/api/auth/set-username-password', async (req, res) => {
+  try {
+    const { username, password, idToken } = req.body || {};
+    const cookies = parseCookies(req.headers.cookie);
+    const bearer = String(req.headers.authorization || '').startsWith('Bearer ')
+      ? String(req.headers.authorization || '').slice(7).trim()
+      : null;
+    const cookieSession = verifySessionToken(cookies.sma_session || bearer);
+
+    let sessionEmail = cookieSession?.email || '';
+    let sessionUserId = cookieSession?.userId || '';
+
+    if (idToken && typeof idToken === 'string' && firebaseAdminApp) {
+      const decoded = await getAdminAuth(firebaseAdminApp).verifyIdToken(idToken);
+      if (decoded.email) sessionEmail = normalizeEmail(decoded.email);
+      if (decoded.uid) sessionUserId = decoded.uid;
+    }
+
+    if (!sessionEmail) {
+      return res.status(401).json({ success: false, error: 'Active verified authentication session is required.' });
+    }
+
+    const cleanUsername = String(username || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+    const rawPassword = String(password || '');
+
+    if (!cleanUsername || cleanUsername.length < 2) {
+      return res.status(400).json({ success: false, error: 'Username must be at least 2 alphanumeric characters.' });
+    }
+    if (rawPassword.length < 6) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long.' });
+    }
+
+    const isMdCaller = isAadithyanIdentifier(sessionEmail);
+    if (isAadithyanIdentifier(cleanUsername) && !isMdCaller) {
+      return res.status(409).json({ success: false, error: 'This username is reserved.' });
+    }
+
+    const store = readPersistentStore();
+    const conflict = store.users.find(
+      (u: any) =>
+        u.username &&
+        normalizeEmail(u.username) === cleanUsername &&
+        normalizeEmail(u.email) !== sessionEmail
+    );
+    if (conflict) {
+      return res.status(409).json({ success: false, error: 'That username is already linked to another account.' });
+    }
+
+    const nowIso = new Date().toISOString();
+    const { salt, hash } = hashPassword(rawPassword);
+    const existingUser = await findUserAcrossStores(sessionEmail) || await findUserAcrossStores(sessionUserId);
+    const targetUserId = existingUser?.id || sessionUserId || `usr-${Date.now()}`;
+
+    const updatedUser = {
+      ...(existingUser || { id: targetUserId, email: sessionEmail, name: sessionEmail.split('@')[0], role: 'STUDENT' }),
+      id: targetUserId,
+      username: cleanUsername,
+      email: sessionEmail,
+      email_verified: true,
+      isVerified: true,
+      status: existingUser?.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+      updatedAt: nowIso,
+    };
+
+    const uIdx = store.users.findIndex((u: any) => u.id === targetUserId || normalizeEmail(u.email) === sessionEmail);
+    if (uIdx >= 0) store.users[uIdx] = updatedUser;
+    else store.users.push(updatedUser);
+    writePersistentStore(store);
+
+    const authStore = readAuthStore();
+    authStore.credentials[sessionEmail] = {
+      ...(authStore.credentials[sessionEmail] || {}),
+      userId: targetUserId,
+      email: sessionEmail,
+      username: cleanUsername,
+      passwordSalt: salt,
+      passwordHash: hash,
+      email_verified: true,
+      emailVerifiedAt: authStore.credentials[sessionEmail]?.emailVerifiedAt || nowIso,
+      updatedAt: nowIso,
+    };
+    writeAuthStore(authStore);
+
+    await syncUserToFirestoreAdmin(updatedUser);
+
+    recordAuthAudit({
+      event: 'USERNAME_PASSWORD_LINKED',
+      userId: targetUserId,
+      email: sessionEmail,
+      role: updatedUser.role,
+      ip: getClientIp(req),
+      outcome: 'SUCCESS',
+      message: `Linked username (${cleanUsername}) & password login to Firebase-verified account.`,
+    });
+
+    return res.json({
+      success: true,
+      user: sanitizeUserForClient(updatedUser),
+      message: `Username "${cleanUsername}" and password login enabled alongside Firebase Authentication.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Unable to link username and password.' });
   }
 });
 

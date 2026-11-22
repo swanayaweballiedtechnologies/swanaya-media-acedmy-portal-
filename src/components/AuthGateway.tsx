@@ -32,7 +32,16 @@ import {
 } from 'lucide-react';
 import { User, UserRole, SwanayaDatabase, Course } from '../db/mockDb';
 import { auth } from '../firebase';
-import { GoogleAuthProvider, sendPasswordResetEmail, signInWithPopup, signOut } from 'firebase/auth';
+import {
+  GoogleAuthProvider,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  updateProfile,
+  signInWithPopup,
+  signOut,
+} from 'firebase/auth';
 import { academyService } from '../services/academyService';
 import ThemeToggle from './ThemeToggle';
 import campusStudioImg from '../assets/images/academy_campus_studio_1794672061245.jpg';
@@ -291,7 +300,7 @@ export default function AuthGateway({
     }
   };
 
-  // Handle Google Login
+  // Handle Google Login (Firebase Authentication + Username Profile Merge)
   const handleGoogleLogin = async () => {
     setError('');
     setInfoBanner('');
@@ -316,7 +325,12 @@ export default function AuthGateway({
         return;
       }
 
-      let userProfile = await academyService.getUserProfile(firebaseUser.uid);
+      const [existingFsProfile, matchedLocal] = await Promise.all([
+        academyService.getUserProfile(firebaseUser.uid),
+        lowerEmail ? academyService.lookupUserForLogin(lowerEmail).catch(() => null) : Promise.resolve(null),
+      ]);
+      let userProfile: any = existingFsProfile;
+      const linkedUsername = matchedLocal?.user?.username;
       const activeGrant = !isAdminEmail ? await academyService.findActiveAdminGrantByEmail(lowerEmail) : null;
 
       if (userProfile?.status === 'INACTIVE' && !isAdminEmail) {
@@ -327,9 +341,9 @@ export default function AuthGateway({
       }
 
       if (selectedRoleTab === 'ADMIN') {
-        const existingRole = String(userProfile?.role || '').toUpperCase();
+        const existingRole = String(userProfile?.role || matchedLocal?.user?.role || '').toUpperCase();
         const isExistingTopAuthority =
-          existingRole === 'MD' || existingRole === 'SUPER_ADMIN' || existingRole === 'PRINCIPAL';
+          existingRole === 'MD' || existingRole === 'SUPER_ADMIN' || existingRole === 'PRINCIPAL' || existingRole === 'ADMIN' || existingRole === 'ACADEMIC_ADMIN';
         if (!isAdminEmail && !isExistingTopAuthority && !activeGrant) {
           await signOut(auth).catch(() => {});
           setError(
@@ -345,16 +359,19 @@ export default function AuthGateway({
           ? 'MD'
           : activeGrant
           ? activeGrant.role
-          : selectedRoleTab === 'TUTOR'
-          ? 'INSTRUCTOR'
-          : 'STUDENT';
+          : (matchedLocal?.user?.role as UserRole) ||
+            (selectedRoleTab === 'TUTOR' ? 'INSTRUCTOR' : 'STUDENT');
 
         userProfile = {
           id: firebaseUser.uid,
-          ...(isAdminEmail ? { username: 'aadithyan', designation: 'Managing Director' } : {}),
+          ...(isAdminEmail
+            ? { username: 'aadithyan', designation: 'Managing Director' }
+            : linkedUsername
+            ? { username: linkedUsername }
+            : {}),
           name: isAdminEmail
             ? 'AADITHYAN M MENON'
-            : activeGrant?.name || firebaseUser.displayName || 'New Scholar',
+            : activeGrant?.name || matchedLocal?.user?.name || firebaseUser.displayName || 'New Scholar',
           email: firebaseUser.email,
           role: resolvedRole,
           status: 'ACTIVE',
@@ -362,13 +379,13 @@ export default function AuthGateway({
           email_verified: true,
           emailVerifiedAt: new Date().toISOString(),
           ...(isAdminEmail ? { adminAcceptanceStatus: 'ACCEPTED', avatarUrl: 'https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon' } : {}),
-          ...(resolvedRole === 'INSTRUCTOR' ? { tutorApprovalStatus: 'PENDING_APPROVAL' } : {}),
+          ...(resolvedRole === 'INSTRUCTOR' && !matchedLocal?.user ? { tutorApprovalStatus: 'PENDING_APPROVAL' } : {}),
           ...(activeGrant ? { grantId: activeGrant.id } : {}),
           ...(!isAdminEmail && !activeGrant && chosenCourseId
             ? {
-                courseId: chosenCourseId,
-                preferredCourseId: chosenCourseId,
-                enrolledCourseIds: [chosenCourseId],
+                courseId: matchedLocal?.user?.courseId || chosenCourseId,
+                preferredCourseId: matchedLocal?.user?.preferredCourseId || chosenCourseId,
+                enrolledCourseIds: matchedLocal?.user?.enrolledCourseIds || [chosenCourseId],
               }
             : {}),
         };
@@ -403,6 +420,7 @@ export default function AuthGateway({
           userProfile = {
             ...userProfile,
             id: firebaseUser.uid,
+            ...(linkedUsername && !userProfile.username ? { username: linkedUsername } : {}),
             role: activeGrant.role,
             grantId: activeGrant.id,
             status: 'ACTIVE',
@@ -411,6 +429,9 @@ export default function AuthGateway({
           };
           await academyService.updateUserProfile(firebaseUser.uid, userProfile);
         }
+      } else if (linkedUsername && !userProfile.username) {
+        userProfile = { ...userProfile, username: linkedUsername };
+        await academyService.updateUserProfile(firebaseUser.uid, userProfile);
       }
 
       if (userProfile.role === 'INSTRUCTOR' && userProfile.tutorApprovalStatus === 'PENDING_APPROVAL') {
@@ -420,16 +441,19 @@ export default function AuthGateway({
         return;
       }
 
-      await academyService
+      const idToken = await firebaseUser.getIdToken().catch(() => undefined);
+      const sessionRes = await academyService
         .establishFirebaseBackendSession({
           userId: userProfile.id || firebaseUser.uid,
           email: lowerEmail,
           role: userProfile.role,
           emailVerified: true,
+          displayName: userProfile.name || firebaseUser.displayName || undefined,
+          idToken,
         })
-        .catch(() => {});
+        .catch(() => null);
 
-      onLoginSuccess(userProfile as User);
+      onLoginSuccess((sessionRes?.user ? { ...userProfile, ...sessionRes.user } : userProfile) as User);
     } catch (err: any) {
       setError('Google Sign-In failed: ' + (err?.message || 'Unable to authenticate'));
     } finally {
@@ -437,23 +461,66 @@ export default function AuthGateway({
     }
   };
 
-  // Handle Credential Login
+  // Handle Dual Credential Login (Username/Password + Firebase Auth Sync & Fallback)
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setInfoBanner('');
     setLoading(true);
+    const trimmedInput = loginInput.trim();
 
     try {
       const result = await academyService.loginWithCredentials({
-        identifier: loginInput.trim(),
+        identifier: trimmedInput,
         password,
         portalTab: selectedRoleTab,
       });
       if (result?.user) {
+        // Sync Firebase Email/Password session seamlessly if enabled for this email
+        if (result.user.email && !auth.currentUser) {
+          await signInWithEmailAndPassword(auth, result.user.email, password).catch(() => {});
+        }
         onLoginSuccess(result.user);
       }
     } catch (err: any) {
+      // If email was entered and Firebase Email/Password Auth succeeds directly, bridge into the portal
+      if (trimmedInput.includes('@') && !['EMAIL_NOT_VERIFIED', 'APPROVAL_PENDING', 'APPROVAL_REJECTED', 'ACCOUNT_INACTIVE'].includes(err?.code)) {
+        try {
+          const cleanEmail = trimmedInput.toLowerCase();
+          const fbCred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+          const fbUser = fbCred.user;
+          const isAdminEmail =
+            cleanEmail === 'swanayamediaenterprisesadmins@gmail.com' ||
+            cleanEmail === 'aadithyan@swanayamedia.com' ||
+            cleanEmail === 'aadithyan.menon@swanayamedia.com';
+
+          if (!fbUser.emailVerified && !isAdminEmail) {
+            await sendEmailVerification(fbUser).catch(() => {});
+            await signOut(auth).catch(() => {});
+            setPendingEmail(cleanEmail);
+            setError('Please verify your Firebase account email before signing in. A fresh verification email was sent.');
+            setLoading(false);
+            return;
+          }
+
+          const idToken = await fbUser.getIdToken().catch(() => undefined);
+          const sessionRes = await academyService.establishFirebaseBackendSession({
+            userId: fbUser.uid,
+            email: cleanEmail,
+            role: selectedRoleTab === 'ADMIN' && isAdminEmail ? 'MD' : selectedRoleTab === 'TUTOR' ? 'INSTRUCTOR' : 'STUDENT',
+            emailVerified: true,
+            displayName: fbUser.displayName || undefined,
+            idToken,
+          });
+          if (sessionRes?.user) {
+            onLoginSuccess(sessionRes.user as User);
+            return;
+          }
+        } catch {
+          // Fall through to primary credential error below
+        }
+      }
+
       if (err?.code === 'EMAIL_NOT_VERIFIED' && err?.email) {
         setPendingEmail(err.email);
         setInfoBanner('Email verification is required before signing in. You can resend your verification link below.');
@@ -464,7 +531,7 @@ export default function AuthGateway({
     }
   };
 
-  // Handle Account Registration with Mandatory Email Verification
+  // Handle Account Registration with Mandatory Email Verification (Username + Firebase Auth Sync)
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -504,6 +571,16 @@ export default function AuthGateway({
         ...(cleanPhone ? { phone: cleanPhone } : {}),
         courseId: regCourseId || coursesList[0]?.id || undefined,
       });
+
+      // Sync registration to Firebase Email/Password Auth if enabled on the Firebase project (non-blocking)
+      try {
+        const fbReg = await createUserWithEmailAndPassword(auth, cleanEmail, regPassword);
+        await updateProfile(fbReg.user, { displayName: cleanName }).catch(() => {});
+        await sendEmailVerification(fbReg.user).catch(() => {});
+        await signOut(auth).catch(() => {});
+      } catch {
+        // Safe fallback: academy email verification & username login still work independently
+      }
 
       setPendingEmail(res?.email || cleanEmail);
       setPendingRole(finalRole);
@@ -943,7 +1020,7 @@ export default function AuthGateway({
               <div className="relative flex items-center py-1">
                 <div className="flex-grow border-t border-[#E5E1EA] dark:border-[#38384B]" />
                 <span className="flex-shrink mx-3 text-[10px] text-[#555770] dark:text-[#B8B5C5] uppercase font-mono tracking-widest">
-                  OR CONTINUE WITH GOOGLE
+                  OR SIGN IN WITH FIREBASE AUTH
                 </span>
                 <div className="flex-grow border-t border-[#E5E1EA] dark:border-[#38384B]" />
               </div>
@@ -959,8 +1036,12 @@ export default function AuthGateway({
                   alt="Google"
                   className="w-4 h-4"
                 />
-                {loading ? 'Authenticating...' : `Continue with Google (${selectedRoleTab})`}
+                {loading ? 'Authenticating...' : `Continue with Google · Firebase (${selectedRoleTab})`}
               </button>
+
+              <p className="text-[11px] text-center text-[var(--sma-active-text-muted)]">
+                Both Username/Password &amp; Firebase Auth sessions stay synchronized for cloud access.
+              </p>
 
               <div className="pt-2 border-t border-[#E5E1EA] dark:border-[#38384B] text-center">
                 <a

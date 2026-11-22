@@ -54,27 +54,54 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
           isAuthorizedAdminEmail ||
           Boolean(firebaseUser.displayName?.toUpperCase().includes('AADITHYAN'));
 
-        // First check/initialize profile and any MD-issued AdminGrant
-        const userProfile = await academyService.getUserProfile(firebaseUser.uid);
+        // Guard unverified email/password Firebase sign-ups from entering portal before verification
+        const isPasswordProvider = firebaseUser.providerData?.some((p) => p.providerId === 'password');
+        if (isPasswordProvider && !firebaseUser.emailVerified && !isMD) {
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
+        // First check/initialize profile, existing username profile, and any MD-issued AdminGrant
+        const [userProfile, matchedExisting] = await Promise.all([
+          academyService.getUserProfile(firebaseUser.uid),
+          lowerEmail ? academyService.lookupUserForLogin(lowerEmail).catch(() => null) : Promise.resolve(null),
+        ]);
         const activeGrant = !isMD
           ? await academyService.findActiveAdminGrantByEmail(lowerEmail)
           : null;
+        const linkedUsername = matchedExisting?.user?.username;
+        const resolvedCourseFromExisting =
+          matchedExisting?.user?.courseId ||
+          matchedExisting?.user?.preferredCourseId ||
+          matchedExisting?.student?.courseId;
 
         if (!userProfile) {
-          const resolvedRole = isMD ? 'MD' : activeGrant ? activeGrant.role : 'STUDENT';
+          const resolvedRole = isMD
+            ? 'MD'
+            : activeGrant
+            ? activeGrant.role
+            : (matchedExisting?.user?.role as string) || 'STUDENT';
           const newProfile = {
             id: firebaseUser.uid,
-            ...(isMD ? { username: 'aadithyan', designation: 'Managing Director' } : {}),
+            ...(isMD
+              ? { username: 'aadithyan', designation: 'Managing Director' }
+              : linkedUsername
+              ? { username: linkedUsername }
+              : {}),
             name: isMD
               ? 'AADITHYAN M MENON'
-              : (activeGrant?.name || firebaseUser.displayName || 'New User'),
+              : (activeGrant?.name || matchedExisting?.user?.name || firebaseUser.displayName || 'New User'),
             email: firebaseUser.email,
             role: resolvedRole,
             isVerified: true,
             email_verified: true,
             ...(isMD ? { adminAcceptanceStatus: 'ACCEPTED' } : {}),
             ...(activeGrant ? { grantId: activeGrant.id } : {}),
-            avatarUrl: isMD ? 'https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${firebaseUser.uid}`,
+            ...(resolvedCourseFromExisting ? { courseId: resolvedCourseFromExisting, preferredCourseId: resolvedCourseFromExisting } : {}),
+            avatarUrl: isMD
+              ? 'https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon'
+              : matchedExisting?.user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${firebaseUser.uid}`,
             status: 'ACTIVE'
           };
           await academyService.createUserProfile(firebaseUser.uid, newProfile);
@@ -110,8 +137,28 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
               role: activeGrant.role,
               grantId: activeGrant.id,
               status: 'ACTIVE',
+              ...(linkedUsername && !userProfile.username ? { username: linkedUsername } : {}),
             });
           }
+        } else if (linkedUsername && !userProfile.username) {
+          await academyService.updateUserProfile(firebaseUser.uid, {
+            ...userProfile,
+            id: firebaseUser.uid,
+            username: linkedUsername,
+          });
+        }
+
+        // Sync Firebase verified session with backend HttpOnly session cookie
+        if (lowerEmail && (firebaseUser.emailVerified || isMD)) {
+          academyService
+            .establishFirebaseBackendSession({
+              userId: firebaseUser.uid,
+              email: lowerEmail,
+              role: isMD ? 'MD' : (activeGrant?.role || userProfile?.role || matchedExisting?.user?.role || 'STUDENT'),
+              emailVerified: true,
+              displayName: firebaseUser.displayName || undefined,
+            })
+            .catch(() => {});
         }
 
         // Set up real-time listener for multi-device profile sync
