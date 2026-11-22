@@ -1,0 +1,65 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdminEmail() {
+      return isSignedIn() &&
+             request.auth.token.email_verified == true && (
+               request.auth.token.email == 'swanayamediaenterprisesadmins@gmail.com' ||
+               request.auth.token.email == 'swanyamediaenterprisesadmins@gmail.com' ||
+               request.auth.token.email == 'aadithyan@swanayamedia.com' ||
+               request.auth.token.email == 'aadithyan.menon@swanayamedia.com' ||
+               request.auth.token.email == 'aadithyanmmenon@gmail.com'
+             );
+    }
+
+    function isAdminUserDoc() {
+      return isSignedIn() &&
+             firestore.exists(/databases/ai-studio-swanayamediaacad-b2d1752a-37e2-44f5-b956-f1160a8c5a5a/documents/users/$(request.auth.uid)) &&
+             firestore.get(/databases/ai-studio-swanayamediaacad-b2d1752a-37e2-44f5-b956-f1160a8c5a5a/documents/users/$(request.auth.uid)).data.role in ['MD', 'PRINCIPAL', 'ADMIN', 'SUPER_ADMIN', 'ACADEMIC_ADMIN'];
+    }
+
+    function isAdmin() {
+      return isAdminEmail() || isAdminUserDoc();
+    }
+
+    // Course Papers & Learning Materials PDFs (Max 25 MB, application/pdf only)
+    match /course_papers/{courseId}/{fileName} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               request.resource != null &&
+                               request.resource.size > 0 &&
+                               request.resource.size <= 25 * 1024 * 1024 &&
+                               request.resource.contentType == 'application/pdf';
+      allow delete: if isAdmin();
+    }
+
+    // User Avatar Photos (Max 5 MB, images only)
+    match /avatars/{userId}/{fileName} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() &&
+                               request.auth.uid == userId &&
+                               request.resource != null &&
+                               request.resource.size <= 5 * 1024 * 1024 &&
+                               request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Media Hub Assets
+    match /media/{fileName} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() &&
+                               request.resource != null &&
+                               request.resource.size <= 50 * 1024 * 1024;
+      allow delete: if isAdmin();
+    }
+
+    // Deny everything else by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

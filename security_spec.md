@@ -26,6 +26,11 @@
 12. **P12 (Incorrect Type)**: Sending a boolean instead of an integer for `durationMinutes`.
 
 ## Roles Mapping
-We will use a `users/{uid}` collection to store roles.
-Admin Check: `get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['SUPER_ADMIN', 'MD', 'ADMIN', 'ACADEMIC_ADMIN']`
-Student Check: `get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'STUDENT'`
+We will use a `users/{uid}` collection to store roles and an MD-governed `admin_grants/{grantId}` collection to authorize Administrator accounts.
+- **MD Authority (`isMd()`)**: Verified bootstrap MD email (`aadithyan.menon@swanayamedia.com`, `swanayamediaenterprisesadmins@gmail.com`, `swanyamediaenterprisesadmins@gmail.com`, `aadithyan@swanayamedia.com`, `aadithyanmmenon@gmail.com`) or `users/{uid}.role in ['MD', 'SUPER_ADMIN']`. Username `aadithyan` resolves strictly to Aadithyan M. Menon (`usr-md`, Managing Director).
+- **Admin Check (`isAdmin()`)**: `isAdminEmail()` or `users/{uid}.role in ['MD', 'PRINCIPAL', 'ADMIN', 'SUPER_ADMIN', 'ACADEMIC_ADMIN']` with active status (`status != 'INACTIVE'`).
+- **Admin Grants (`admin_grants/{grantId}`)**: Created, updated (suspended/reactivated), and deleted exclusively by the MD. Self-registration is restricted to `STUDENT`, `INSTRUCTOR`, `ALUMNI`, and `PARENT`; an `ADMIN` / `ACADEMIC_ADMIN` user profile can only be created or claimed when backed by an active matching `admin_grants/{grantId}` record.
+- **PII & Collection Scoping**: `/users/{userId}` `get`/`list` reads are scoped to the profile owner (`isOwner(userId)` / `resource.data.id == request.auth.uid`) or `isAdmin()`. `/google_meet_meetings/{meetingId}` writes are restricted to `isInstructorOrAdmin()`.
+- **Dirty Dozen Addition — Unauthorized Admin Provisioning**: Non-MD users attempting to create `admin_grants/{grantId}`, self-register with `role: 'ADMIN'`, or update their `users/{uid}.role` without an active MD-issued `admin_grants/{grantId}` must be rejected with `PERMISSION_DENIED`.
+- **Dirty Dozen Addition — Cross-User PII Scraping**: A non-admin student or tutor attempting to `get` or `list` another user's `/users/{userId}` profile must be rejected with `PERMISSION_DENIED`.
+

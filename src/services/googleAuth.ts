@@ -14,8 +14,10 @@ export const auth = getAuth(app);
 
 export const provider = new GoogleAuthProvider();
 
-// Workspace Gmail Scopes
-const GMAIL_SCOPES = [
+// Workspace Google Calendar & Gmail Scopes
+const WORKSPACE_SCOPES = [
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/calendar.events',
   'https://mail.google.com/',
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -23,7 +25,7 @@ const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify'
 ];
 
-GMAIL_SCOPES.forEach(scope => provider.addScope(scope));
+WORKSPACE_SCOPES.forEach(scope => provider.addScope(scope));
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;

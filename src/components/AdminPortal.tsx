@@ -3,17 +3,28 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Users, BookOpen, Layers, UserCheck, Calendar, GraduationCap, DollarSign, 
-  Plus, Edit, Eye, Trash2, Search, Filter, Check, X, FileText, MoveUp, MapPin, Sparkles, AlertTriangle,
-  MessageCircle, ExternalLink, Phone
+  Plus, Edit, Eye, EyeOff, Globe, Trash2, Search, Filter, Check, X, FileText, MoveUp, MapPin, Sparkles, AlertTriangle,
+  MessageCircle, ExternalLink, Phone, RefreshCw, ShieldCheck, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Video, TrendingUp, Palette
 } from 'lucide-react';
+import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup } from 'firebase/auth';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { 
-  SwanayaDatabase, Student, Course, Batch, User, Instructor, Semester, Subject, AdmissionApplication, Lead, ExamCenter
+  SwanayaDatabase, Student, Course, Batch, User, Instructor, Semester, Subject, AdmissionApplication, Lead, ExamCenter 
 } from '../db/mockDb';
 import InstructorAllocation from './InstructorAllocation';
-import { academyService } from '../services/academyService';
+import AdminCourseMaterialsPanel from './AdminCourseMaterialsPanel';
+import LiveClassMeetWhatsAppPanel from './LiveClassMeetWhatsAppPanel';
+import GoogleMeetStudioPanel from './GoogleMeetStudioPanel';
+import FinancePortal from './FinancePortal';
+import CourseMappingEnginePortal from './CourseMappingEnginePortal';
+import MajorMinorCourseManagementPanel from './MajorMinorCourseManagementPanel';
+import AdminThemeConsole from './AdminThemeConsole';
+import { academyService, isPublishedCourse } from '../services/academyService';
+import { auth } from '../firebase';
+import { suggestNextAvailableBatch } from '../utils/batchCapacity';
 
 interface AdminPortalProps {
   activeRole: 'SUPER_ADMIN' | 'ADMIN' | 'ACADEMIC_ADMIN' | 'MD' | 'PRINCIPAL' | 'REVIEWER';
@@ -21,34 +32,186 @@ interface AdminPortalProps {
   onRefreshAllData: () => void;
   onOpenProfile?: (target: { type: 'STUDENT' | 'INSTRUCTOR' | 'USER'; id: string }) => void;
   onNavigate?: (tab: string) => void;
+  initialSubTab?: string;
 }
 
-export default function AdminPortal({ activeRole, currentUser, onRefreshAllData, onOpenProfile, onNavigate }: AdminPortalProps) {
-  // State from LocalStorage
+export default function AdminPortal({ activeRole, currentUser, onRefreshAllData, onOpenProfile, onNavigate, initialSubTab }: AdminPortalProps) {
+  // State from LocalStorage + Firestore real-time subscription for courses
   const [students, setStudents] = useState<Student[]>(() => SwanayaDatabase.get<Student[]>("students"));
-  const [courses, setCourses] = useState<Course[]>(() => SwanayaDatabase.get<Course[]>("courses"));
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState<boolean>(true);
+  const [coursesError, setCoursesError] = useState<string | null>(null);
+  const [courseNotice, setCourseNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [confirmDeleteCourse, setConfirmDeleteCourse] = useState<Course | null>(null);
+  const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null);
+  const [savingCourse, setSavingCourse] = useState<boolean>(false);
+  const [firebaseConnected, setFirebaseConnected] = useState<boolean>(Boolean(auth.currentUser));
+
   const [batches, setBatches] = useState<Batch[]>(() => SwanayaDatabase.get<Batch[]>("batches"));
   const [instructors, setInstructors] = useState<Instructor[]>(() => SwanayaDatabase.get<Instructor[]>("instructors"));
   const [semesters, setSemesters] = useState<Semester[]>(() => SwanayaDatabase.get<Semester[]>("semesters"));
   const [subjects, setSubjects] = useState<Subject[]>(() => SwanayaDatabase.get<Subject[]>("subjects"));
   const [applications, setApplications] = useState<AdmissionApplication[]>(() => SwanayaDatabase.get<AdmissionApplication[]>("applications"));
 
-  React.useEffect(() => {
-    const loadRealCourses = async () => {
-      const fetched = await academyService.getCourses();
-      if (fetched && fetched.length > 0) {
-        setCourses(fetched as unknown as Course[]);
-      }
-    };
-    loadRealCourses();
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, (fbUser) => {
+      setFirebaseConnected(Boolean(fbUser));
+    });
+    return () => unsubAuth();
   }, []);
+
+  useEffect(() => {
+    setCoursesLoading(true);
+    setCoursesError(null);
+    const unsubscribe = academyService.subscribeCourses({
+      includeUnpublished: true,
+      onData: (fetched) => {
+        setCourses(fetched);
+        setCoursesLoading(false);
+        setCoursesError(null);
+      },
+      onError: (err) => {
+        setCoursesError(err.message || 'Unable to sync course catalog from Firestore.');
+        setCoursesLoading(false);
+      },
+    });
+    return () => unsubscribe();
+  }, [firebaseConnected]);
+
+  const handleConnectGoogleAdmin = async (): Promise<boolean> => {
+    setCourseNotice(null);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const cred = await signInWithPopup(auth, provider);
+      const authed = Boolean(cred?.user || auth.currentUser);
+      setFirebaseConnected(authed);
+      if (authed) {
+        setCourseNotice({
+          type: 'success',
+          text: `Connected Admin Google session (${cred?.user?.email || auth.currentUser?.email || 'Admin'}). Cloud course editing, deletion, and PDF uploads are enabled.`,
+        });
+      }
+      return authed;
+    } catch (err: any) {
+      setCourseNotice({
+        type: 'error',
+        text: err?.message || 'Google Admin connection was cancelled or failed.',
+      });
+      return false;
+    }
+  };
 
   // Batch capacity verification states for student modal
   const [studentModalOverrideConfirmed, setStudentModalOverrideConfirmed] = useState(false);
   const [studentModalCapacityWarning, setStudentModalCapacityWarning] = useState<string | null>(null);
 
   // Navigation Sub-tab within Admin portal
-  const [activeSubTab, setActiveSubTab] = useState<string>('registrations');
+  const [activeSubTab, setActiveSubTab] = useState<string>(initialSubTab || 'registrations');
+  const [subTabDropdownOpen, setSubTabDropdownOpen] = useState<boolean>(false);
+
+  const adminSubTabs = [
+    {
+      id: 'registrations',
+      label: 'Registrations',
+      icon: UserCheck,
+      description: 'Applicant & Student enrollments',
+    },
+    {
+      id: 'courses',
+      label: 'Courses & Syllabus',
+      icon: BookOpen,
+      description: 'Curriculum & course configurations',
+    },
+    {
+      id: 'course-management',
+      label: 'Major & Minor Courses',
+      icon: GraduationCap,
+      description: 'Major/Minor programmes, tutor allocations & approvals',
+    },
+    {
+      id: 'course-mapping',
+      label: 'Course Mapping Engine',
+      icon: BookOpen,
+      description: 'A-Z curriculum, subject, exam & certificate mapping',
+    },
+    {
+      id: 'materials',
+      label: 'Course Materials',
+      icon: FileText,
+      description: 'PDF papers, notes & uploads',
+    },
+    {
+      id: 'live-classes',
+      label: 'Meet & WhatsApp Groups',
+      icon: MessageCircle,
+      description: 'Live lectures & cohort channels',
+    },
+    {
+      id: 'google-meet',
+      label: 'Google Meet Studio',
+      icon: Video,
+      description: 'Calendar scheduling & Meet rooms',
+    },
+    {
+      id: 'students',
+      label: 'Students CRM',
+      icon: Users,
+      description: 'Student directory & records',
+    },
+    {
+      id: 'occupancy',
+      label: 'Batch Occupancy',
+      icon: TrendingUp,
+      description: 'Capacity planning & analytics',
+    },
+    {
+      id: 'allocation',
+      label: 'Faculty',
+      icon: GraduationCap,
+      description: 'Instructor allocation & trainers',
+    },
+    {
+      id: 'admissions',
+      label: 'Admissions Inbox',
+      icon: Layers,
+      description: 'Prospect applications pipeline',
+    },
+    {
+      id: 'curriculum',
+      label: 'Curriculum Builder',
+      icon: BookOpen,
+      description: 'Semester & subject structure',
+    },
+    {
+      id: 'finance-verification',
+      label: 'Fee & UPI Verification',
+      icon: DollarSign,
+      description: 'Verify GPay UTRs & issue PDF receipts',
+    },
+    {
+      id: 'theme',
+      label: 'Theme & Colour Console',
+      icon: Palette,
+      description: 'Global colour palette & dark/light theme manager',
+    },
+    ...(activeRole === 'SUPER_ADMIN'
+      ? [
+          {
+            id: 'overview',
+            label: 'System Health',
+            icon: ShieldCheck,
+            description: 'Audit logs & system overview',
+          },
+        ]
+      : []),
+  ];
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setActiveSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
 
 
   const handleAddAdmin = (e: React.FormEvent) => {
@@ -68,22 +231,23 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
     const users = SwanayaDatabase.get<User[]>("users");
     SwanayaDatabase.set("users", [...users, newUser]);
     onRefreshAllData();
-    alert('Admin added successfully!');
+    setCourseNotice({ type: 'success', text: `Admin "${name}" (${email}) added to local registry.` });
     form.reset();
   };
 
   const handleClearPreloadedContent = () => {
-    if (window.confirm("Are you sure you want to remove all preloaded content? This will allow you to add fresh subjects, trainers, courses, and registrations.")) {
-      SwanayaDatabase.clearAllPreloadedData();
-      setStudents([]);
-      setCourses([]);
-      setBatches([]);
-      setInstructors([]);
-      setSemesters([]);
-      setSubjects([]);
-      setApplications([]);
-      onRefreshAllData();
-    }
+    SwanayaDatabase.clearAllPreloadedData();
+    setStudents([]);
+    setBatches([]);
+    setInstructors([]);
+    setSemesters([]);
+    setSubjects([]);
+    setApplications([]);
+    setCourseNotice({
+      type: 'success',
+      text: 'Cleared local demo students, batches, subjects, and registrations. Live Firestore courses remain preserved.',
+    });
+    onRefreshAllData();
   };
 
   const handleRestoreDefaultContent = () => {
@@ -128,11 +292,12 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
     name: '',
     description: '',
     duration: '12 Months',
-    level: 'ADVANCED' as 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'DIPLOMA',
+    level: 'ADVANCED' as Course['level'],
     eligibility: '',
     fee: 0,
     mode: 'HYBRID' as 'PHYSICAL' | 'ONLINE' | 'HYBRID',
-    coordinator: ''
+    coordinator: '',
+    isPublished: true
   });
 
   // Curriculum Builder additions
@@ -187,6 +352,9 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
       });
     } else {
       setEditingStudent(null);
+      const initCourseId = courses[0]?.id || 'c-1';
+      const suggested = suggestNextAvailableBatch(initCourseId, batches, students);
+      const matchingSemester = semesters.find((s) => s.courseId === initCourseId)?.id || semesters[0]?.id || 's-1-1';
       setStudentForm({
         name: '',
         email: '',
@@ -196,9 +364,9 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
         guardianName: '',
         guardianPhone: '',
         academicBackground: '',
-        courseId: courses[0]?.id || 'c-1',
-        batchId: batches[0]?.id || 'b-1',
-        semesterId: semesters[0]?.id || 's-1-1',
+        courseId: initCourseId,
+        batchId: suggested.batchId || batches[0]?.id || 'b-1',
+        semesterId: matchingSemester,
         skills: 'HTML5, CSS, React',
         outstandingBalance: 145000
       });
@@ -321,6 +489,7 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
 
   // Course Actions
   const handleOpenCourseModal = (course: Course | null) => {
+    setCourseNotice(null);
     if (course) {
       setEditingCourse(course);
       setCourseForm({
@@ -332,7 +501,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
         eligibility: course.eligibility,
         fee: course.fee,
         mode: course.mode,
-        coordinator: course.coordinator
+        coordinator: course.coordinator,
+        isPublished: isPublishedCourse(course)
       });
     } else {
       setEditingCourse(null);
@@ -345,7 +515,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
         eligibility: '12th Standard or Equivalent',
         fee: 65000,
         mode: 'PHYSICAL',
-        coordinator: 'Devika Menon'
+        coordinator: 'Devika Menon',
+        isPublished: true
       });
     }
     setIsCourseModalOpen(true);
@@ -353,8 +524,19 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
 
   const handleSaveCourse = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCourseNotice(null);
+    setSavingCourse(true);
     try {
+      if (!auth.currentUser) {
+        const connected = await handleConnectGoogleAdmin();
+        if (!connected || !auth.currentUser) {
+          setSavingCourse(false);
+          return;
+        }
+      }
+
       const courseId = editingCourse ? editingCourse.id : `c-${Date.now()}`;
+      const publishedFlag = Boolean(courseForm.isPublished);
       const courseData: Course = {
         id: courseId,
         code: (courseForm.code.trim() || 'SMA-NEW').toUpperCase(),
@@ -366,7 +548,8 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
         fee: Number(courseForm.fee) || 0,
         mode: courseForm.mode || 'PHYSICAL',
         coordinator: courseForm.coordinator || 'Devika Menon',
-        status: 'ACTIVE',
+        status: publishedFlag ? 'ACTIVE' : 'ARCHIVED',
+        isPublished: publishedFlag,
         thumbnailUrl: (editingCourse as any)?.thumbnailUrl || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80',
         learningObjectives: (editingCourse as any)?.learningObjectives && (editingCourse as any).learningObjectives.length > 0 
           ? (editingCourse as any).learningObjectives 
@@ -382,33 +565,17 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
           ]
       };
 
-      // 1. Immediately update local state & SwanayaDatabase
-      const currentCourseList = Array.isArray(courses) ? courses : (SwanayaDatabase.get<Course[]>("courses") || []);
-      let updatedCourses: Course[];
-      if (editingCourse) {
-        updatedCourses = currentCourseList.map(c => c.id === editingCourse.id ? { ...c, ...courseData } : c);
-      } else {
-        updatedCourses = [...currentCourseList, courseData];
-      }
-      saveCourses(updatedCourses);
+      await academyService.createCourse(courseData);
 
-      // Safe audit logging
       try {
         SwanayaDatabase.log(
           currentUser?.email || 'admin@swanayamedia.com',
           currentUser?.name || 'Administrator',
           editingCourse ? "COURSE_UPDATE" : "COURSE_CREATE",
-          `Course: ${courseData.name} (${courseData.code})`
+          `Course: ${courseData.name} (${courseData.code}) [${publishedFlag ? 'PUBLISHED' : 'DRAFT'}]`
         );
       } catch (logErr) {
         console.warn('Audit log write notice:', logErr);
-      }
-
-      // 2. Persist to database (server persistent store + Firestore)
-      try {
-        await academyService.createCourse(courseData);
-      } catch (syncErr) {
-        console.warn('Cloud sync deferred (saved to persistent local database):', syncErr);
       }
 
       setIsCourseModalOpen(false);
@@ -416,47 +583,109 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
       if (typeof onRefreshAllData === 'function') {
         onRefreshAllData();
       }
-
-      // 3. User feedback
-      alert(`Success: Course "${courseData.name}" (${courseData.code}) is saved to the database and published to the front-end catalog!`);
+      setCourseNotice({
+        type: 'success',
+        text: `Course "${courseData.name}" (${courseData.code}) saved to Firestore (${publishedFlag ? 'Published to registration catalog' : 'Saved as unpublished draft'}).`,
+      });
     } catch (err: any) {
-      console.error("Save course error:", err);
-      // Fallback save to ensure data is never lost
-      try {
-        const fallbackId = editingCourse ? editingCourse.id : `c-${Date.now()}`;
-        const fallbackCourse: Course = {
-          id: fallbackId,
-          code: (courseForm.code || 'SMA-NEW').toUpperCase(),
-          name: courseForm.name || 'Course',
-          description: courseForm.description || '',
-          duration: courseForm.duration || '6 Months',
-          level: courseForm.level || 'DIPLOMA',
-          eligibility: courseForm.eligibility || '12th Standard',
-          fee: Number(courseForm.fee) || 0,
-          mode: courseForm.mode || 'PHYSICAL',
-          coordinator: courseForm.coordinator || 'Academic Director',
-          status: 'ACTIVE',
-          thumbnailUrl: '',
-          learningObjectives: [],
-          careerOutcomes: []
-        };
-        const currentList = Array.isArray(courses) ? courses : [];
-        const updated = editingCourse
-          ? currentList.map(c => c.id === editingCourse.id ? { ...c, ...fallbackCourse } : c)
-          : [...currentList, fallbackCourse];
-        saveCourses(updated);
-        setIsCourseModalOpen(false);
-        setEditingCourse(null);
-        if (typeof onRefreshAllData === 'function') onRefreshAllData();
-        alert(`Course "${fallbackCourse.name}" saved successfully.`);
-      } catch (fallbackErr: any) {
-        console.error('Course save critical warning:', fallbackErr);
+      const msg = err?.message || 'Unable to save course.';
+      const currentGoogleEmail = auth.currentUser?.email;
+      setCourseNotice({
+        type: 'error',
+        text: msg.includes('permission-denied')
+          ? `Signed-in Google account (${currentGoogleEmail || 'unknown'}) lacks Admin write permission in Firestore. Please click "Connect Admin Google" with an authorized Swanaya Admin account.`
+          : msg.includes('ADMIN_FIREBASE_AUTH_REQUIRED') || !auth.currentUser
+          ? 'Please click "Connect Admin Google" above with an authorized Swanaya Admin email to save changes to Firestore.'
+          : `Failed to save course: ${msg}`,
+      });
+    } finally {
+      setSavingCourse(false);
+    }
+  };
+
+  const handleToggleCoursePublish = async (course: Course) => {
+    setCourseNotice(null);
+    const nextPublished = !isPublishedCourse(course);
+    try {
+      if (!auth.currentUser) {
+        const connected = await handleConnectGoogleAdmin();
+        if (!connected || !auth.currentUser) return;
       }
+
+      await academyService.setCoursePublishState(course.id, nextPublished);
+      SwanayaDatabase.log(
+        currentUser?.email || 'admin@swanayamedia.com',
+        currentUser?.name || 'Administrator',
+        nextPublished ? 'COURSE_PUBLISH' : 'COURSE_UNPUBLISH',
+        `Course ${course.name} (${course.code})`
+      );
+      setCourseNotice({
+        type: 'success',
+        text: `"${course.name}" is now ${nextPublished ? 'Published on landing & registration pages' : 'Unpublished (hidden from registration dropdowns)'}.`,
+      });
+      onRefreshAllData();
+    } catch (err: any) {
+      const msg = err?.message || '';
+      const currentGoogleEmail = auth.currentUser?.email;
+      setCourseNotice({
+        type: 'error',
+        text: msg.includes('permission-denied')
+          ? `Signed-in Google account (${currentGoogleEmail || 'unknown'}) lacks Admin permission to update course status in Firestore.`
+          : !auth.currentUser || msg.includes('ADMIN_FIREBASE_AUTH_REQUIRED')
+          ? 'Connect Admin Google account to publish or unpublish courses in Firestore.'
+          : msg || 'Failed to update course publication state.',
+      });
+    }
+  };
+
+  const handleDeleteCourseConfirm = async () => {
+    if (!confirmDeleteCourse) return;
+    setDeletingCourseId(confirmDeleteCourse.id);
+    setCourseNotice(null);
+    try {
+      if (!auth.currentUser) {
+        const connected = await handleConnectGoogleAdmin();
+        if (!connected || !auth.currentUser) {
+          setDeletingCourseId(null);
+          return;
+        }
+      }
+
+      await academyService.deleteCourse(confirmDeleteCourse.id);
+      SwanayaDatabase.log(
+        currentUser?.email || 'admin@swanayamedia.com',
+        currentUser?.name || 'Administrator',
+        'COURSE_DELETE',
+        `Deleted course ${confirmDeleteCourse.name} (${confirmDeleteCourse.code})`
+      );
+      setCourseNotice({
+        type: 'success',
+        text: `Deleted course "${confirmDeleteCourse.name}" (${confirmDeleteCourse.code}) from Firestore.`,
+      });
+      setConfirmDeleteCourse(null);
+      onRefreshAllData();
+    } catch (err: any) {
+      const msg = err?.message || '';
+      const currentGoogleEmail = auth.currentUser?.email;
+      setCourseNotice({
+        type: 'error',
+        text: msg.includes('permission-denied')
+          ? `Signed-in Google account (${currentGoogleEmail || 'unknown'}) is not authorized to delete courses in Firestore. Please connect with an Admin Google email (e.g. swanayamediaenterprisesadmins@gmail.com).`
+          : !auth.currentUser || msg.includes('ADMIN_FIREBASE_AUTH_REQUIRED')
+          ? 'Connect Admin Google account to delete courses from Firestore.'
+          : msg || 'Failed to delete course.',
+      });
+      setConfirmDeleteCourse(null);
+    } finally {
+      setDeletingCourseId(null);
     }
   };
 
   const handleCommitAndExportSyllabus = (courseName: string) => {
-    alert(`Official Syllabus Document committed and exported as PDF/Word for "${courseName}". Download initiated successfully.`);
+    setCourseNotice({
+      type: 'success',
+      text: `Official Syllabus Document committed for "${courseName}".`,
+    });
     SwanayaDatabase.log(currentUser.email, currentUser.name, "SYLLABUS_COMMIT_PDF", `Exported syllabus PDF for ${courseName}`);
   };
 
@@ -488,7 +717,10 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
     setSubjects(updated);
     setMultiPaperText('');
     setMultiPaperModalOpen(false);
-    alert(`Successfully committed and mapped ${newSubs.length} paper programs to curriculum!`);
+    setCourseNotice({
+      type: 'success',
+      text: `Successfully committed and mapped ${newSubs.length} paper programs to curriculum.`,
+    });
     SwanayaDatabase.log(currentUser.email, currentUser.name, "CURRICULUM_BATCH_COMMIT", `Committed ${newSubs.length} multi-paper programs`);
     onRefreshAllData();
   };
@@ -577,9 +809,9 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-900/80 border border-slate-800 p-4 rounded-lg gap-4 shadow-lg">
         <div>
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <ShieldCheck className="w-4 h-4 text-[var(--sma-accent)] shrink-0" />
             <h2 className="text-sm font-serif font-bold text-white uppercase tracking-wider">
-              ADMIN CONTROL CENTER & REGISTRATIONS
+              ADMIN CONTROL CENTER &amp; REGISTRATIONS
             </h2>
           </div>
           <p className="text-[11px] text-slate-400 mt-0.5">
@@ -608,120 +840,509 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
         </div>
       </div>
 
-      {/* Dynamic Navigation Sub-tabs */}
-      <div className="flex flex-wrap items-center gap-1 bg-slate-900/60 border border-slate-800 p-1 rounded-md">
-        <button 
-          onClick={() => setActiveSubTab('registrations')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeSubTab === 'registrations' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Registrations
-        </button>
+      {/* Dynamic Navigation Sub-tabs: Only Popup Drop Box */}
+      <div className="relative inline-block w-full">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/80 border border-slate-800 p-3 rounded-xl shadow-lg backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-widest pl-1">
+              Active Module:
+            </span>
+            <button
+              type="button"
+              onClick={() => setSubTabDropdownOpen((prev) => !prev)}
+              className="px-4 py-2.5 bg-slate-950 hover:bg-slate-850 border border-amber-500/50 hover:border-amber-400 text-white rounded-lg transition-all cursor-pointer flex items-center justify-between gap-3 shadow-md shadow-amber-500/5 group text-left min-w-[260px] sm:min-w-[320px]"
+              aria-haspopup="true"
+              aria-expanded={subTabDropdownOpen}
+              title="Click to open module dropdown menu"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                {(() => {
+                  const current = adminSubTabs.find((t) => t.id === activeSubTab) || adminSubTabs[0];
+                  const IconComp = current.icon;
+                  return (
+                    <>
+                      <div className="p-1.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 shrink-0">
+                        <IconComp className="w-4 h-4" />
+                      </div>
+                      <div className="truncate">
+                        <p className="text-xs font-bold text-white font-serif group-hover:text-amber-300 transition-colors truncate">
+                          {current.label}
+                        </p>
+                        <p className="text-[10px] text-slate-400 truncate">
+                          {current.description}
+                        </p>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
 
-        <button 
-          onClick={() => setActiveSubTab('courses')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeSubTab === 'courses' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Courses & Syllabus
-        </button>
+              <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-slate-800">
+                <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
+                  Select
+                </span>
+                {subTabDropdownOpen ? (
+                  <ChevronUp className="w-4 h-4 text-amber-400 transition-transform" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-amber-400 transition-transform" />
+                )}
+              </div>
+            </button>
+          </div>
 
-        <button 
-          onClick={() => setActiveSubTab('students')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeSubTab === 'students' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Students CRM
-        </button>
+          <div className="flex items-center gap-2 text-xs text-slate-400 font-mono pr-1">
+            <span className="text-[10px] text-slate-500 hidden md:inline">Quick Jump:</span>
+            <select
+              value={activeSubTab}
+              onChange={(e) => {
+                setActiveSubTab(e.target.value);
+                setSubTabDropdownOpen(false);
+              }}
+              className="bg-slate-950 border border-slate-800 text-slate-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-amber-400 font-mono cursor-pointer"
+            >
+              {adminSubTabs.map((tab) => (
+                <option key={tab.id} value={tab.id}>
+                  {tab.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-        <button 
-          onClick={() => setActiveSubTab('allocation')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeSubTab === 'allocation' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Faculty
-        </button>
+        {/* Popup Drop Box Dropdown Popover */}
+        {subTabDropdownOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs"
+              onClick={() => setSubTabDropdownOpen(false)}
+            />
+            <div className="absolute left-0 mt-2 w-full sm:w-[480px] md:w-[540px] bg-slate-950/95 border border-amber-500/40 rounded-2xl shadow-2xl z-50 p-4 max-h-[520px] overflow-y-auto backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-850 pb-2.5 px-1">
+                <div>
+                  <h4 className="text-xs font-bold text-white font-mono tracking-widest uppercase flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                    Admin Control Modules
+                  </h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Click any module below to switch views
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSubTabDropdownOpen(false)}
+                  className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                  title="Close popup"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-        {activeRole === 'SUPER_ADMIN' && (
-          <button 
-            onClick={() => setActiveSubTab('overview')}
-            className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-              activeSubTab === 'overview' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            System Health
-          </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {adminSubTabs.map((tab) => {
+                  const IconComponent = tab.icon;
+                  const isCurrent = activeSubTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveSubTab(tab.id);
+                        setSubTabDropdownOpen(false);
+                      }}
+                      className={`text-left p-3 rounded-xl border transition-all cursor-pointer flex items-start gap-3 group ${
+                        isCurrent
+                          ? 'bg-amber-500/15 border-amber-500 text-white shadow-lg shadow-amber-500/10'
+                          : 'bg-slate-900/60 border-slate-800/80 hover:bg-slate-900 hover:border-slate-700 text-slate-300'
+                      }`}
+                    >
+                      <div
+                        className={`p-2 rounded-lg shrink-0 mt-0.5 transition-colors ${
+                          isCurrent
+                            ? 'bg-amber-500 text-black font-bold'
+                            : 'bg-slate-950 border border-slate-800 text-slate-400 group-hover:text-amber-400'
+                        }`}
+                      >
+                        <IconComponent className="w-4 h-4" />
+                      </div>
+                      <div className="space-y-0.5 flex-grow truncate">
+                        <div className="flex items-center justify-between gap-1">
+                          <p className={`text-xs font-bold truncate ${isCurrent ? 'text-amber-300' : 'text-slate-200 group-hover:text-white'}`}>
+                            {tab.label}
+                          </p>
+                          {isCurrent && (
+                            <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">
+                          {tab.description}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="pt-2 border-t border-slate-850 flex items-center justify-between px-1 text-[10px] text-slate-500 font-mono">
+                <span>{adminSubTabs.length} Modules Configured</span>
+                <span className="text-amber-500 font-semibold">Active: {adminSubTabs.find(t=>t.id===activeSubTab)?.label}</span>
+              </div>
+            </div>
+          </>
         )}
       </div>
 
-      {/* COURSES & SYLLABUS SECTION */}
+      {/* LIVE CLASS GOOGLE MEET & WHATSAPP GROUPS */}
+      {activeSubTab === 'live-classes' && (
+        <LiveClassMeetWhatsAppPanel
+          mode="MANAGE"
+          currentUser={currentUser}
+          courses={courses}
+          batches={batches}
+          subjects={subjects}
+          onRefreshAllData={onRefreshAllData}
+        />
+      )}
+
+      {/* COURSE MAPPING ENGINE */}
+      {activeSubTab === 'course-mapping' && (
+        <CourseMappingEnginePortal
+          currentUser={currentUser}
+          onRefreshAllData={onRefreshAllData}
+        />
+      )}
+
+      {/* GOOGLE MEET & CALENDAR STUDIO */}
+      {activeSubTab === 'google-meet' && (
+        <GoogleMeetStudioPanel
+          mode="MANAGE"
+          currentUser={currentUser}
+          courses={courses}
+          batches={batches}
+        />
+      )}
+
+      {/* FEE COLLECTION & UPI VERIFICATION DASHBOARD */}
+      {activeSubTab === 'finance-verification' && (
+        <FinancePortal
+          currentUser={currentUser}
+          onRefreshAllData={onRefreshAllData}
+        />
+      )}
+
+      {/* BATCH OCCUPANCY ANALYTICS (RECHARTS BAR CHART) */}
+      {activeSubTab === 'occupancy' && (
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-850 pb-4">
+            <div>
+              <span className="text-[10px] font-mono text-amber-500 font-bold uppercase tracking-wider">Analytics &amp; Capacity Planner</span>
+              <h3 className="text-lg font-serif font-bold text-white">Batch Occupancy &amp; Utilization Overview</h3>
+              <p className="text-xs text-slate-400">Visualizing enrolled scholars vs. maximum batch capacities across courses to identify full or under-utilized cohorts.</p>
+            </div>
+          </div>
+
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {(() => {
+              const totalCapacity = batches.reduce((sum, b) => sum + (b.maxCapacity || 30), 0);
+              const totalEnrolled = students.filter(s => s.status !== 'INACTIVE').length;
+              const overallUtil = totalCapacity > 0 ? Math.round((totalEnrolled / totalCapacity) * 100) : 0;
+              return (
+                <>
+                  <div className="bg-slate-950 p-4 rounded-lg border border-slate-850 space-y-1">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase">Total Capacity</span>
+                    <p className="text-xl font-bold font-mono text-slate-100">{totalCapacity} Seats</p>
+                  </div>
+                  <div className="bg-slate-950 p-4 rounded-lg border border-slate-850 space-y-1">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase">Active Enrolled Scholars</span>
+                    <p className="text-xl font-bold font-mono text-amber-400">{totalEnrolled} Enrolled</p>
+                  </div>
+                  <div className="bg-slate-950 p-4 rounded-lg border border-slate-850 space-y-1">
+                    <span className="text-[10px] font-mono text-slate-500 uppercase">Overall Utilization Rate</span>
+                    <p className={`text-xl font-bold font-mono ${overallUtil > 85 ? 'text-amber-400' : 'text-emerald-400'}`}>{overallUtil}%</p>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Recharts Bar Chart */}
+          <div className="bg-slate-950 p-5 rounded-lg border border-slate-850 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-300">Enrolled vs. Capacity per Batch</h4>
+              <span className="text-[10px] font-mono text-slate-500">Recharts Visualization</span>
+            </div>
+
+            <div className="h-80 w-full pt-4">
+              {batches.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-500 italic">No active batches configured.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={batches.map(b => {
+                      const enrolled = students.filter(s => s.batchId === b.id && s.status !== 'INACTIVE').length;
+                      const capacity = b.maxCapacity || 30;
+                      const crs = courses.find(c => c.id === b.courseId);
+                      return {
+                        name: b.name || b.code,
+                        course: crs?.code || crs?.name || 'General',
+                        enrolled,
+                        capacity,
+                        available: Math.max(0, capacity - enrolled)
+                      };
+                    })}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 45 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 11 }} angle={-15} textAnchor="end" />
+                    <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#f8fafc', fontSize: '12px' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                    <Bar dataKey="enrolled" name="Enrolled Students" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="capacity" name="Total Capacity" fill="#334155" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* COURSE MATERIALS MANAGEMENT SUB-TAB */}
+      {activeSubTab === 'materials' && (
+        <AdminCourseMaterialsPanel
+          courses={courses}
+          currentUser={currentUser}
+          firebaseConnected={firebaseConnected}
+          onConnectGoogleAdmin={async () => {
+            await handleConnectGoogleAdmin();
+          }}
+        />
+      )}
+
+      {/* MAJOR & MINOR COURSE MANAGEMENT SUB-TAB */}
+      {activeSubTab === 'course-management' && (
+        <MajorMinorCourseManagementPanel
+          currentUser={currentUser}
+          onRefreshAllData={onRefreshAllData}
+        />
+      )}
+
+      {/* THEME & COLOUR MANAGEMENT CONSOLE SUB-TAB */}
+      {activeSubTab === 'theme' && (
+        <AdminThemeConsole
+          currentUser={currentUser}
+          onThemeSaved={onRefreshAllData}
+        />
+      )}
+
+      {/* COURSES & SYLLABUS SECTION (UNIFIED) */}
       {activeSubTab === 'courses' && (
         <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900/60 border border-slate-800 p-5 rounded-lg gap-4">
-            <div>
-              <h3 className="text-base font-serif font-bold text-white">Course Catalog & Mapping</h3>
-              <p className="text-[11px] text-slate-400">Manage academic programs, upload brochures, and map syllabus modules.</p>
+          {!firebaseConnected && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-300">
+                    Connect Admin Google Account for Cloud Course Sync
+                  </p>
+                  <p className="text-xs text-slate-300">
+                    You signed in locally. Authenticate with your authorized Swanaya Admin Google account to create, edit, publish, unpublish, or delete courses in Firestore.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleConnectGoogleAdmin}
+                className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-900 text-xs font-bold uppercase tracking-wider rounded-lg cursor-pointer shrink-0 flex items-center gap-2"
+              >
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-4 h-4" />
+                <span>Connect Admin Google</span>
+              </button>
             </div>
-            <div className="flex items-center gap-3">
+          )}
+
+          {courseNotice && (
+            <div
+              role="status"
+              className={`p-3.5 rounded-lg border text-xs flex items-center justify-between gap-3 ${
+                courseNotice.type === 'success'
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {courseNotice.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                )}
+                <span>{courseNotice.text}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {courseNotice.type === 'error' && (
+                  <button
+                    type="button"
+                    onClick={() => void handleConnectGoogleAdmin()}
+                    className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-900 text-[10px] font-bold uppercase rounded cursor-pointer"
+                  >
+                    Connect / Switch Admin Google
+                  </button>
+                )}
+                <button type="button" onClick={() => setCourseNotice(null)} className="text-slate-400 hover:text-white cursor-pointer">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900/60 border border-slate-800 p-5 rounded-lg gap-4">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-serif font-bold text-white">Course Catalog &amp; Publication Registry</h3>
+                {firebaseConnected && auth.currentUser?.email && (
+                  <button
+                    type="button"
+                    onClick={() => void handleConnectGoogleAdmin()}
+                    title="Click to switch Google Admin account"
+                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 cursor-pointer"
+                  >
+                    Cloud: {auth.currentUser.email} (Switch)
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">Create, edit, publish/unpublish, and delete academy courses synced in real time to registration pages.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('materials')}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-bold uppercase rounded flex items-center gap-1.5 cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" /> Manage Course PDFs
+              </button>
               <button 
+                type="button"
                 onClick={() => handleOpenCourseModal(null)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase rounded flex items-center gap-2 cursor-pointer"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded flex items-center gap-2 cursor-pointer shadow-md shadow-amber-500/10"
               >
                 <Plus className="w-4 h-4" /> Create Course
               </button>
-              <button 
-                onClick={() => {
-                  alert('Course Catalog & Mappings successfully saved to database and synchronized!');
-                  onRefreshAllData();
-                }}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded flex items-center gap-2 cursor-pointer shadow-md shadow-amber-500/10"
-              >
-                <Check className="w-4 h-4" /> Save Course Mapping
-              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {courses.map(course => (
-              <div key={course.id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 flex flex-col justify-between">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-start">
-                    <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-bold font-mono">
-                      {course.code}
-                    </span>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleOpenCourseModal(course)} className="p-1.5 bg-slate-800 text-slate-400 hover:text-blue-400 rounded" title="Edit Course"><Edit className="w-3.5 h-3.5" /></button>
-                      <button className="p-1.5 bg-slate-800 text-slate-400 hover:text-rose-400 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+          {coursesLoading ? (
+            <div className="p-10 text-center bg-slate-900/40 border border-slate-800 rounded-xl text-xs font-mono text-slate-400 flex items-center justify-center gap-2">
+              <RefreshCw className="w-4 h-4 text-amber-400 animate-spin" />
+              <span>Loading Firestore course catalog...</span>
+            </div>
+          ) : coursesError ? (
+            <div className="p-6 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300">
+              {coursesError}
+            </div>
+          ) : courses.length === 0 ? (
+            <div className="p-10 text-center bg-slate-900/30 border border-slate-800 rounded-xl space-y-2">
+              <p className="text-sm font-serif font-bold text-slate-200">No Courses Created Yet</p>
+              <p className="text-xs text-slate-400">Click &ldquo;Create Course&rdquo; to publish your first academy program.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {courses.map(course => {
+                const published = isPublishedCourse(course);
+                return (
+                  <div key={course.id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 flex flex-col justify-between">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-bold font-mono">
+                            {course.code}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                            published
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                              : 'bg-slate-800 border-slate-700 text-slate-400'
+                          }`}>
+                            {published ? 'PUBLISHED' : 'UNPUBLISHED'}
+                          </span>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCourseModal(course)}
+                            className="p-1.5 bg-slate-800 text-slate-300 hover:text-blue-400 rounded cursor-pointer"
+                            title="Edit Course"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteCourse(course)}
+                            className="p-1.5 bg-slate-800 text-slate-300 hover:text-rose-400 rounded cursor-pointer"
+                            title="Delete Course"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white font-serif">{course.name}</h4>
+                        <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{course.description}</p>
+                      </div>
+                      <div className="pt-2 border-t border-slate-800 grid grid-cols-3 gap-2 text-[11px] font-mono">
+                        <span className="text-slate-400 truncate">{course.level}</span>
+                        <span className="text-slate-400 truncate text-center">{course.duration}</span>
+                        <span className="text-amber-500 font-bold text-right">₹{Number(course.fee || 0).toLocaleString('en-IN')}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500">Coordinator: {course.coordinator} · Mode: {course.mode}</p>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleCoursePublish(course)}
+                        className={`px-3 py-1.5 text-[11px] font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1.5 ${
+                          published
+                            ? 'bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200'
+                            : 'bg-emerald-500 hover:bg-emerald-400 text-black'
+                        }`}
+                      >
+                        {published ? (
+                          <>
+                            <EyeOff className="w-3.5 h-3.5" />
+                            <span>Unpublish</span>
+                          </>
+                        ) : (
+                          <>
+                            <Globe className="w-3.5 h-3.5" />
+                            <span>Publish</span>
+                          </>
+                        )}
+                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCourseModal(course)}
+                          className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black text-[11px] font-bold uppercase rounded cursor-pointer transition-colors shadow"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteCourse(course)}
+                          className="px-2.5 py-1.5 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 text-[11px] font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">{course.name}</h4>
-                    <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{course.description}</p>
-                  </div>
-                  <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-[11px] font-mono">
-                    <span className="text-slate-500">{course.duration}</span>
-                    <span className="text-amber-500 font-bold">₹{course.fee.toLocaleString()}</span>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                  <span className="text-[10px] text-emerald-400 font-mono font-semibold">Catalog Mapped</span>
-                  <button
-                    onClick={() => {
-                      handleOpenCourseModal(course);
-                    }}
-                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black text-[11px] font-bold uppercase rounded cursor-pointer transition-colors shadow"
-                  >
-                    Save Course
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1104,63 +1725,7 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
         </div>
       )}
 
-      {/* COURSES DIRECTORY TAB */}
-      {activeSubTab === 'courses' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center bg-slate-900/60 border border-slate-800 p-4 rounded-lg">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Courses Registry</h3>
-            <button
-              onClick={() => handleOpenCourseModal(null)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add Course Spec
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {courses.map((course) => (
-              <div key={course.id} className="bg-slate-900/40 border border-slate-800 rounded-lg p-6 space-y-4">
-                <div className="flex justify-between items-start border-b border-slate-800/60 pb-3">
-                  <div>
-                    <span className="text-[9px] font-mono text-amber-500 font-bold uppercase">{course.code}</span>
-                    <h4 className="text-sm font-semibold text-slate-100 font-serif mt-1">{course.name}</h4>
-                  </div>
-                  <button
-                    onClick={() => handleOpenCourseModal(course)}
-                    className="p-1 bg-slate-850 hover:bg-slate-800 border border-slate-800 rounded text-amber-400 transition-colors"
-                    title="Edit Program"
-                  >
-                    <Edit className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <p className="text-xs text-slate-400 leading-normal">{course.description}</p>
-
-                <div className="grid grid-cols-3 gap-2 pt-2 text-[10px] font-mono text-slate-500">
-                  <div>
-                    <span className="text-slate-600 block text-[8px] uppercase">Level</span>
-                    <span className="text-slate-300 font-bold">{course.level}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-600 block text-[8px] uppercase">Duration</span>
-                    <span className="text-slate-300">{course.duration}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-600 block text-[8px] uppercase">Academy Fee</span>
-                    <span className="text-amber-500 font-bold">₹{course.fee.toLocaleString('en-IN')}</span>
-                  </div>
-                </div>
-
-                <div className="text-[10px] text-slate-400 border-t border-slate-850 pt-3 flex justify-between">
-                  <span>Coordinator: {course.coordinator}</span>
-                  <span className="text-emerald-400">Status: {course.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Removed duplicate COURSES DIRECTORY TAB - consolidated above */}
 
       {/* ADMISSIONS APPLICATION TRACKER */}
       {activeSubTab === 'admissions' && (
@@ -1606,7 +2171,23 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
                   <label className="text-[10px] text-slate-500 uppercase font-bold">Course Program</label>
                   <select
                     value={studentForm.courseId}
-                    onChange={(e) => setStudentForm({...studentForm, courseId: e.target.value})}
+                    onChange={(e) => {
+                      const nextCourseId = e.target.value;
+                      if (!editingStudent) {
+                        const suggested = suggestNextAvailableBatch(nextCourseId, batches, students);
+                        const matchingSem = semesters.find((s) => s.courseId === nextCourseId)?.id;
+                        setStudentForm({
+                          ...studentForm,
+                          courseId: nextCourseId,
+                          batchId: suggested.batchId || studentForm.batchId,
+                          semesterId: matchingSem || studentForm.semesterId,
+                        });
+                        setStudentModalCapacityWarning(null);
+                        setStudentModalOverrideConfirmed(false);
+                      } else {
+                        setStudentForm({ ...studentForm, courseId: nextCourseId });
+                      }
+                    }}
                     className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-2 text-xs text-slate-200"
                   >
                     {courses.map(c => (
@@ -1634,19 +2215,29 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
                     onChange={(e) => {
                       setStudentForm({...studentForm, batchId: e.target.value});
                       setStudentModalCapacityWarning(null);
+                      setStudentModalOverrideConfirmed(false);
                     }}
                     className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-2 text-xs text-slate-200"
                   >
-                    {batches.map(b => {
-                      const count = students.filter(s => s.batchId === b.id && s.status !== 'INACTIVE' && (!editingStudent || s.id !== editingStudent.id)).length;
-                      const maxCap = b.maxCapacity ?? 30;
-                      const isFull = count >= maxCap;
-                      return (
-                        <option key={b.id} value={b.id}>
-                          {b.name} ({count}/{maxCap} {isFull ? '• FULL' : ''})
-                        </option>
+                    {(() => {
+                      const suggested = suggestNextAvailableBatch(
+                        studentForm.courseId,
+                        batches,
+                        students,
+                        editingStudent?.id
                       );
-                    })}
+                      return batches.map(b => {
+                        const count = students.filter(s => s.batchId === b.id && s.status !== 'INACTIVE' && (!editingStudent || s.id !== editingStudent.id)).length;
+                        const maxCap = b.maxCapacity ?? 30;
+                        const isFull = count >= maxCap;
+                        const isSuggested = suggested.batchId === b.id && suggested.hasOpenSeats;
+                        return (
+                          <option key={b.id} value={b.id}>
+                            {isSuggested ? '★ Suggested · ' : ''}{b.name} ({count}/{maxCap} {isFull ? '• FULL' : `• ${Math.max(0, maxCap - count)} open`})
+                          </option>
+                        );
+                      });
+                    })()}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -1662,6 +2253,36 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
                   </select>
                 </div>
               </div>
+
+              {(() => {
+                const suggested = suggestNextAvailableBatch(
+                  studentForm.courseId,
+                  batches,
+                  students,
+                  editingStudent?.id
+                );
+                if (!suggested.batch) return null;
+                return (
+                  <div className="px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between gap-2">
+                    <p className="text-[11px] text-emerald-300 leading-snug">
+                      <span className="font-bold">Smart Batch Suggestion:</span> {suggested.batch.name} — {suggested.reason}
+                    </p>
+                    {studentForm.batchId !== suggested.batchId && suggested.hasOpenSeats && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStudentForm({ ...studentForm, batchId: suggested.batchId });
+                          setStudentModalCapacityWarning(null);
+                          setStudentModalOverrideConfirmed(false);
+                        }}
+                        className="px-2.5 py-1 bg-emerald-500 text-slate-950 rounded text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer hover:bg-emerald-400"
+                      >
+                        Use Suggested
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* BATCH CAPACITY WARNING BOX */}
               {(() => {
@@ -1857,22 +2478,74 @@ export default function AdminPortal({ activeRole, currentUser, onRefreshAllData,
                 </div>
               </div>
 
+              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={courseForm.isPublished}
+                  onChange={(e) => setCourseForm({ ...courseForm, isPublished: e.target.checked })}
+                  className="accent-amber-500 rounded cursor-pointer"
+                />
+                <span>Publish immediately to front-end landing &amp; student registration pages</span>
+              </label>
+
               <div className="flex gap-2 pt-2 justify-end">
                 <button
                   type="button"
                   onClick={() => setIsCourseModalOpen(false)}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-xs text-slate-400 uppercase font-bold"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-xs text-slate-400 uppercase font-bold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer"
+                  disabled={savingCourse}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer disabled:opacity-50"
                 >
-                  Save Blueprint
+                  {savingCourse ? 'Saving to Firestore...' : editingCourse ? 'Update Course' : 'Create & Save Course'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* COURSE DELETE CONFIRMATION MODAL */}
+      {confirmDeleteCourse && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-950 border border-rose-500/30 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h3 className="text-base font-serif font-bold text-white">Delete Course Program</h3>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Are you sure you want to delete <strong className="text-amber-300">{confirmDeleteCourse.name}</strong> ({confirmDeleteCourse.code})? It will be removed from Firestore and student registration dropdowns immediately.
+            </p>
+            {!firebaseConnected && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-[11px] text-amber-200 flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <span>
+                  Your Admin Google session is not connected yet. Clicking below will prompt Google Sign-In to authorize deleting this course in Firestore.
+                </span>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteCourse(null)}
+                className="px-4 py-2 bg-slate-900 border border-slate-800 text-slate-300 text-xs font-bold uppercase rounded cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingCourseId === confirmDeleteCourse.id}
+                onClick={() => void handleDeleteCourseConfirm()}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold uppercase rounded cursor-pointer disabled:opacity-50"
+              >
+                {deletingCourseId === confirmDeleteCourse.id
+                  ? 'Deleting...'
+                  : firebaseConnected
+                  ? 'Delete Course'
+                  : 'Connect Google & Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

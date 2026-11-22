@@ -43,31 +43,95 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }
 
       if (firebaseUser) {
-        // First check/initialize profile
+        const lowerEmail = String(firebaseUser.email || '').trim().toLowerCase();
+        const isAuthorizedAdminEmail =
+          lowerEmail === 'swanayamediaenterprisesadmins@gmail.com' ||
+          lowerEmail === 'swanyamediaenterprisesadmins@gmail.com' ||
+          lowerEmail === 'aadithyan@swanayamedia.com' ||
+          lowerEmail === 'aadithyan.menon@swanayamedia.com' ||
+          lowerEmail === 'aadithyanmmenon@gmail.com';
+        const isMD =
+          isAuthorizedAdminEmail ||
+          Boolean(firebaseUser.displayName?.toUpperCase().includes('AADITHYAN'));
+
+        // First check/initialize profile and any MD-issued AdminGrant
         const userProfile = await academyService.getUserProfile(firebaseUser.uid);
-        
+        const activeGrant = !isMD
+          ? await academyService.findActiveAdminGrantByEmail(lowerEmail)
+          : null;
+
         if (!userProfile) {
-          const isMD = firebaseUser.email === 'aadithyan@swanayamedia.com' || firebaseUser.displayName?.includes('AADITHYAN');
+          const resolvedRole = isMD ? 'MD' : activeGrant ? activeGrant.role : 'STUDENT';
           const newProfile = {
             id: firebaseUser.uid,
-            name: isMD ? 'AADITHYAN M MENON' : (firebaseUser.displayName || 'New User'),
+            ...(isMD ? { username: 'aadithyan', designation: 'Managing Director' } : {}),
+            name: isMD
+              ? 'AADITHYAN M MENON'
+              : (activeGrant?.name || firebaseUser.displayName || 'New User'),
             email: firebaseUser.email,
-            role: isMD ? 'MD' : 'STUDENT',
-            avatarUrl: isMD ? 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aadithyan&mood[]=happy' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${firebaseUser.uid}`,
+            role: resolvedRole,
+            isVerified: true,
+            email_verified: true,
+            ...(isMD ? { adminAcceptanceStatus: 'ACCEPTED' } : {}),
+            ...(activeGrant ? { grantId: activeGrant.id } : {}),
+            avatarUrl: isMD ? 'https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon' : `https://api.dicebear.com/7.x/avataaars/svg?seed=${firebaseUser.uid}`,
             status: 'ACTIVE'
           };
           await academyService.createUserProfile(firebaseUser.uid, newProfile);
-        } else if (firebaseUser.email === 'aadithyan@swanayamedia.com' || firebaseUser.displayName?.includes('AADITHYAN')) {
-           // Ensure requested naming is preserved
-           if (userProfile.name !== 'AADITHYAN M MENON') {
-             await academyService.createUserProfile(firebaseUser.uid, { ...userProfile, name: 'AADITHYAN M MENON', role: 'MD' });
-           }
+        } else if (isMD) {
+          const currentRole = String(userProfile.role || '').toUpperCase();
+          const needsMdNormalize =
+            !['SUPER_ADMIN', 'MD'].includes(currentRole) ||
+            userProfile.username !== 'aadithyan' ||
+            userProfile.designation !== 'Managing Director' ||
+            userProfile.name !== 'AADITHYAN M MENON' ||
+            userProfile.status !== 'ACTIVE';
+          if (needsMdNormalize) {
+            await academyService.updateUserProfile(firebaseUser.uid, {
+              ...userProfile,
+              id: firebaseUser.uid,
+              username: 'aadithyan',
+              name: 'AADITHYAN M MENON',
+              designation: 'Managing Director',
+              email: userProfile.email || firebaseUser.email,
+              role: 'MD',
+              status: 'ACTIVE',
+              isVerified: true,
+              email_verified: true,
+              adminAcceptanceStatus: 'ACCEPTED',
+            });
+          }
+        } else if (activeGrant && userProfile.status !== 'INACTIVE') {
+          const currentRole = String(userProfile.role || '').toUpperCase();
+          if (currentRole !== activeGrant.role || userProfile.grantId !== activeGrant.id) {
+            await academyService.updateUserProfile(firebaseUser.uid, {
+              ...userProfile,
+              id: firebaseUser.uid,
+              role: activeGrant.role,
+              grantId: activeGrant.id,
+              status: 'ACTIVE',
+            });
+          }
         }
 
         // Set up real-time listener for multi-device profile sync
         unsubscribeProfile = onSnapshot(doc(db, 'users', firebaseUser.uid), (snapshot) => {
           if (snapshot.exists()) {
-            const data = snapshot.data();
+            const rawData = snapshot.data();
+            const data = isMD
+              ? {
+                  ...rawData,
+                  id: firebaseUser.uid,
+                  username: 'aadithyan',
+                  name: 'AADITHYAN M MENON',
+                  designation: 'Managing Director',
+                  role: 'MD',
+                  status: 'ACTIVE',
+                  isVerified: true,
+                  email_verified: true,
+                  adminAcceptanceStatus: 'ACCEPTED',
+                }
+              : rawData;
             setProfile(data);
 
             // Hydrate into SwanayaDatabase so local components always have the user
@@ -84,6 +148,13 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
               if (data.role === 'STUDENT' || data.role === 'ALUMNI') {
                 const currentStudents = SwanayaDatabase.get<Student[]>('students') || [];
                 const sIdx = currentStudents.findIndex(s => s.userId === data.id || (data.email && s.email.toLowerCase() === data.email.toLowerCase()));
+                const resolvedCourseId =
+                  data.courseId ||
+                  data.preferredCourseId ||
+                  (Array.isArray(data.enrolledCourseIds) && data.enrolledCourseIds[0]) ||
+                  currentStudents[sIdx]?.courseId ||
+                  '';
+
                 if (sIdx < 0) {
                   const newStudent: Student = {
                     id: `s-${data.id}`,
@@ -92,15 +163,13 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
                     userId: data.id,
                     name: data.name,
                     email: data.email,
-                    phone: data.phone || '+91 94460 00000',
-                    whatsappPhone: data.whatsappPhone || data.phone || '+91 94460 00000',
-                    whatsappOptIn: data.whatsappOptIn ?? true,
+                    phone: data.phone || '',
                     guardianName: data.guardianName || 'Parent / Guardian',
-                    guardianPhone: data.guardianPhone || '+91 94460 00000',
+                    guardianPhone: data.guardianPhone || '',
                     academicBackground: data.academicBackground || 'Enrolled Scholar',
                     avatarUrl: data.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(data.name)}`,
                     status: data.status || 'ACTIVE',
-                    courseId: data.preferredCourseId || 'c-1',
+                    courseId: resolvedCourseId,
                     batchId: 'b-1',
                     semesterId: 's-1-1',
                     enrollmentDate: data.createdAt || new Date().toISOString().split('T')[0],
@@ -118,10 +187,10 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({ 
                     name: data.name || currentStudents[sIdx].name,
                     avatarUrl: data.avatarUrl || currentStudents[sIdx].avatarUrl,
                     phone: data.phone || currentStudents[sIdx].phone,
-                    whatsappPhone: data.whatsappPhone || currentStudents[sIdx].whatsappPhone,
                     guardianName: data.guardianName || currentStudents[sIdx].guardianName,
                     guardianPhone: data.guardianPhone || currentStudents[sIdx].guardianPhone,
                     academicBackground: data.academicBackground || currentStudents[sIdx].academicBackground,
+                    courseId: resolvedCourseId || currentStudents[sIdx].courseId,
                     skills: data.skills || currentStudents[sIdx].skills
                   };
                   SwanayaDatabase.set('students', currentStudents);

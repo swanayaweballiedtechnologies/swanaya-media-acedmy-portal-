@@ -39,7 +39,8 @@ import {
   Upload,
   Camera,
   RotateCcw,
-  Trash2
+  Trash2,
+  KeyRound
 } from 'lucide-react';
 
 export interface IndividualProfileTarget {
@@ -55,6 +56,7 @@ interface IndividualProfileModalProps {
   onRefreshAllData: () => void;
   initialEditMode?: boolean;
   onUserUpdated?: (updatedUser: User) => void;
+  onRequestReauth?: () => void;
 }
 
 export default function IndividualProfileModal({
@@ -64,7 +66,8 @@ export default function IndividualProfileModal({
   currentUser,
   onRefreshAllData,
   initialEditMode = false,
-  onUserUpdated
+  onUserUpdated,
+  onRequestReauth
 }: IndividualProfileModalProps) {
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'academic' | 'financial' | 'idcard'>('overview');
   const [isEditing, setIsEditing] = useState(Boolean(initialEditMode));
@@ -77,6 +80,7 @@ export default function IndividualProfileModal({
   const [isDragOverFace, setIsDragOverFace] = useState(false);
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const lastUploadedFileRef = useRef<File | null>(null);
+
 
   const resolvedProfile = useMemo(() => {
     if (!isOpen || !target) return null;
@@ -130,7 +134,7 @@ export default function IndividualProfileModal({
       userObj?.phone ||
       studentObj?.whatsappPhone ||
       userObj?.whatsappPhone ||
-      '+91 94460 00000';
+      '';
     const defaultAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(displayName)}`;
     const displayAvatar =
       studentObj?.avatarUrl || instructorObj?.avatarUrl || userObj?.avatarUrl || defaultAvatar;
@@ -209,7 +213,7 @@ export default function IndividualProfileModal({
       phone: displayPhone,
       whatsappPhone: studentObj?.whatsappPhone || userObj?.whatsappPhone || displayPhone,
       guardianName: studentObj?.guardianName || userObj?.guardianName || 'Parent / Guardian',
-      guardianPhone: studentObj?.guardianPhone || userObj?.guardianPhone || '+91 94460 00000',
+      guardianPhone: studentObj?.guardianPhone || userObj?.guardianPhone || '',
       academicBackground:
         studentObj?.academicBackground ||
         instructorObj?.qualification ||
@@ -355,9 +359,13 @@ export default function IndividualProfileModal({
         .slice(0, 25);
 
       const finalAvatarUrl = editForm.avatarUrl.trim() || defaultAvatar;
+      const lowerDisplayEmail = String(displayEmail || '').trim().toLowerCase();
       const isSpecialMdAccount =
-        displayEmail === 'aadithyan@swanayamedia.com' ||
-        displayEmail === 'swanayamediaenterprisesadmins@gmail.com';
+        lowerDisplayEmail === 'aadithyan@swanayamedia.com' ||
+        lowerDisplayEmail === 'aadithyan.menon@swanayamedia.com' ||
+        lowerDisplayEmail === 'swanayamediaenterprisesadmins@gmail.com' ||
+        lowerDisplayEmail === 'swanyamediaenterprisesadmins@gmail.com' ||
+        lowerDisplayEmail === 'aadithyanmmenon@gmail.com';
       const finalName = isSpecialMdAccount
         ? editForm.name.trim() || 'AADITHYAN M MENON'
         : editForm.name.trim() || displayName;
@@ -464,6 +472,8 @@ export default function IndividualProfileModal({
     window.print();
   };
 
+  const isEmailVerified = Boolean(userObj?.email_verified ?? userObj?.isVerified ?? (userObj?.status === 'ACTIVE'));
+
   const avatarObjectClass = editForm.avatarFocus === 'top' ? 'object-cover object-top' : 'object-cover object-center';
   const initials = displayName
     .split(/\s+/)
@@ -473,13 +483,13 @@ export default function IndividualProfileModal({
     .join('');
 
   return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-[#0B0F17] border border-slate-800 rounded-xl max-w-3xl w-full overflow-hidden shadow-2xl relative my-8">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-[#FFFFFF] dark:bg-[#242436] border border-[#E5E1EA] dark:border-[#38384B] text-[#25263A] dark:text-[#F5F3FA] rounded-xl max-w-3xl w-full overflow-hidden shadow-2xl relative my-8">
         {/* Header Bar */}
-        <div className="bg-[#0f172a]/80 border-b border-slate-800 px-6 py-4 flex items-center justify-between gap-3">
+        <div className="bg-[#F4F3F7] dark:bg-[#1D1D2B] border-b border-[#E5E1EA] dark:border-[#38384B] px-6 py-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <UserCheck className="w-5 h-5 text-amber-400 shrink-0" />
-            <h3 className="text-sm font-bold font-serif text-white tracking-wide truncate">
+            <UserCheck className="w-5 h-5 text-[var(--sma-role-accent)] shrink-0" />
+            <h3 className="text-sm font-bold font-serif text-[#25263A] dark:text-[#F5F3FA] tracking-wide truncate">
               Individual Profile Settings
             </h3>
             <span className="text-xs font-mono text-amber-400 font-semibold whitespace-nowrap shrink-0">
@@ -513,9 +523,9 @@ export default function IndividualProfileModal({
         </div>
 
         {/* User Card Hero Header */}
-        <div className="p-6 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-b border-slate-800 flex flex-col sm:flex-row items-center sm:items-start gap-5">
+        <div className="p-6 bg-[#F9F8FC] dark:bg-[#1D1D2B] border-b border-[#E5E1EA] dark:border-[#38384B] flex flex-col sm:flex-row items-center sm:items-start gap-5">
           <div className="flex flex-col items-center gap-2 shrink-0">
-            <div className="w-24 h-24 rounded-xl border-2 border-amber-500/50 bg-slate-900 shadow-md overflow-hidden flex items-center justify-center">
+            <div className="w-24 h-24 rounded-xl border-2 border-[var(--sma-role-accent-border)] bg-[#FFFFFF] dark:bg-[#242436] shadow-md overflow-hidden flex items-center justify-center">
               {!avatarLoadFailed && editForm.avatarUrl ? (
                 <img
                   src={editForm.avatarUrl}
@@ -542,10 +552,14 @@ export default function IndividualProfileModal({
 
           <div className="space-y-1.5 text-center sm:text-left flex-grow">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-              <h2 className="text-xl font-bold font-serif text-white">{editForm.name || displayName}</h2>
-              {userObj?.isVerified && (
-                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-mono">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Verified ID
+              <h2 className="text-xl font-bold font-serif text-[#25263A] dark:text-[#F5F3FA]">{editForm.name || displayName}</h2>
+              {isEmailVerified ? (
+                <span className="inline-flex items-center gap-1 text-[11px] text-[#2E7051] dark:text-[#76BD99] font-mono font-semibold">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Email Verified
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-300 font-mono">
+                  <Clock className="w-3.5 h-3.5" /> Verification Pending
                 </span>
               )}
             </div>
@@ -572,17 +586,19 @@ export default function IndividualProfileModal({
 
             {/* Quick Action Bar */}
             <div className="pt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2">
-              <a
-                href={`https://wa.me/${displayPhone.replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=${encodeURIComponent(
-                  `Hello ${displayName}, reaching out from Swanaya Media Academy.`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-2.5 py-1.5 bg-emerald-950/50 hover:bg-emerald-900/50 border border-emerald-500/30 text-emerald-400 rounded text-xs font-mono font-medium flex items-center gap-1.5 transition-colors whitespace-nowrap"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                <span>WhatsApp ({editForm.phone || displayPhone})</span>
-              </a>
+              {(editForm.phone || displayPhone) && (
+                <a
+                  href={`https://wa.me/${(editForm.phone || displayPhone).replace(/[^\d+]/g, '').replace(/^\+/, '')}?text=${encodeURIComponent(
+                    `Hello ${displayName}, reaching out from Swanaya Media Academy.`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1.5 bg-emerald-950/50 hover:bg-emerald-900/50 border border-emerald-500/30 text-emerald-400 rounded text-xs font-mono font-medium flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>WhatsApp ({editForm.phone || displayPhone})</span>
+                </a>
+              )}
 
               <a
                 href={`mailto:${displayEmail}`}
@@ -600,6 +616,20 @@ export default function IndividualProfileModal({
                 <Printer className="w-3.5 h-3.5 text-amber-400" />
                 <span>Print Digital ID Pass</span>
               </button>
+
+              {onRequestReauth && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onRequestReauth();
+                  }}
+                  className="px-2.5 py-1.5 bg-[#7652A8]/15 hover:bg-[#7652A8]/25 border border-[#7652A8]/40 text-[#5E3C8F] dark:text-[#D5BEFA] rounded text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Re-Auth Username &amp; Password</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1132,6 +1162,45 @@ export default function IndividualProfileModal({
                         .filter(Boolean)
                         .join(' · ') || 'None specified'}
                     </p>
+                  </div>
+
+                  {/* Email Verification & Contact Summary */}
+                  <div className="p-4 bg-[#F9F8FC] dark:bg-[#1D1D2B] border border-[#E5E1EA] dark:border-[#38384B] rounded-xl space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="text-xs font-mono font-bold text-[var(--sma-role-accent-text)] uppercase tracking-wider flex items-center gap-1.5">
+                        <Mail className="w-4 h-4" />
+                        <span>Email Verification &amp; Contact Details</span>
+                      </h4>
+                      <span
+                        className={`text-[11px] font-mono font-semibold flex items-center gap-1 ${
+                          isEmailVerified
+                            ? 'text-[#2E7051] dark:text-[#76BD99]'
+                            : 'text-amber-600 dark:text-amber-300'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {isEmailVerified ? 'EMAIL VERIFIED' : 'VERIFICATION PENDING'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-[#555770] dark:text-[#B8B5C5]">
+                      <div>
+                        <span className="block text-[11px] uppercase tracking-wider font-mono text-[#555770] dark:text-[#B8B5C5]">
+                          Verified Email
+                        </span>
+                        <strong className="text-[#25263A] dark:text-[#F5F3FA] font-mono break-all">
+                          {displayEmail}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="block text-[11px] uppercase tracking-wider font-mono text-[#555770] dark:text-[#B8B5C5]">
+                          Contact Number
+                        </span>
+                        <strong className="text-[#25263A] dark:text-[#F5F3FA] font-mono">
+                          {editForm.phone || displayPhone || 'Not provided'}
+                        </strong>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

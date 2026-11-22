@@ -37,11 +37,15 @@ export interface User {
   createdAt: string;
   updatedAt?: string;
   isVerified?: boolean;
+  email_verified?: boolean;
+  grantId?: string;
   studentIds?: string[];
   guardianPin?: string;
   whatsappPhone?: string;
   whatsappOptIn?: boolean;
   preferredCourseId?: string;
+  courseId?: string;
+  enrolledCourseIds?: string[];
 }
 
 export interface Student {
@@ -86,21 +90,237 @@ export interface Instructor {
   assignedSubjects: string[]; // Subject IDs
 }
 
+export type CourseSpecializationType = 'major' | 'minor' | 'MAJOR' | 'MINOR';
+
 export interface Course {
   id: string;
   code: string; // e.g. SMA-ADWDVC
   name: string;
+  title?: string;
+  courseType?: CourseSpecializationType;
+  category?: string;
+  categoryId?: string;
   description: string;
   duration: string; // e.g. "12 Months"
-  level: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'DIPLOMA';
+  credits?: number;
+  prerequisites?: string[]; // course codes or prerequisite descriptions
+  level: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'DIPLOMA' | 'CERTIFICATE';
   eligibility: string;
   fee: number; // in INR
+  fees?: number;
   mode: 'PHYSICAL' | 'ONLINE' | 'HYBRID';
   status: 'ACTIVE' | 'ARCHIVED';
+  isPublished?: boolean;
+  maxSeats?: number;
+  enrolledCount?: number;
+  assignedTutorIds?: string[];
+  examRequirements?: string;
   thumbnailUrl: string;
   coordinator: string;
   learningObjectives: string[];
   careerOutcomes: string[];
+  syllabusModules?: CourseModuleItem[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CourseCategory {
+  id: string;
+  name: string;
+  code?: string;
+  description?: string;
+  status: 'ACTIVE' | 'ARCHIVED';
+  createdAt?: string;
+}
+
+export interface CourseModuleItem {
+  id: string;
+  courseId: string;
+  title: string;
+  description?: string;
+  moduleCode?: string;
+  order?: number;
+  orderIndex?: number;
+  durationHours: number;
+  assessmentType?: string;
+  isRequired?: boolean;
+  topics?: string[];
+  learningOutcome?: string;
+}
+
+export interface CourseCreditSpec {
+  id: string;
+  courseId: string;
+  totalCredits: number;
+  theoryCredits?: number;
+  practicalCredits?: number;
+  projectCredits?: number;
+  minPassingGrade?: string;
+  passingScore?: number;
+}
+
+export interface TutorCourseAllocation {
+  id: string;
+  courseId: string;
+  courseCode?: string;
+  courseName?: string;
+  courseType: CourseSpecializationType;
+  tutorId: string;
+  tutorUserId?: string;
+  tutorName: string;
+  tutorEmail: string;
+  role?: 'LEAD' | 'CO_TUTOR';
+  roleLabel?: 'PRIMARY_FACULTY' | 'CO_TUTOR' | 'LAB_MENTOR';
+  batchId?: string;
+  status?: 'ACTIVE' | 'ARCHIVED';
+  allocatedBy?: string;
+  allocatedAt: string;
+}
+
+export type MajorMinorApprovalStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'UNDER_REVIEW'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'MODIFICATION_REQUIRED';
+
+export interface StudentCourseSelection {
+  id: string;
+  studentId: string;
+  userId?: string;
+  studentName: string;
+  studentEmail?: string;
+  studentRegisterNo?: string;
+  academicTerm?: string;
+  majorCourseId: string;
+  majorCourseCode?: string;
+  majorCourseName?: string;
+  minorCourseIds: string[];
+  minorCourseNames?: string[];
+  totalCredits: number;
+  studyMode?: 'PHYSICAL' | 'ONLINE' | 'HYBRID';
+  statementOfPurpose?: string;
+  remarks?: string;
+  approvalStatus: MajorMinorApprovalStatus;
+  submittedAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  adminRemarks?: string;
+  locked?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CourseEnrollmentRecord {
+  id: string;
+  selectionId: string;
+  studentId: string;
+  userId?: string;
+  studentName: string;
+  studentEmail?: string;
+  courseId: string;
+  courseCode?: string;
+  courseName?: string;
+  courseType: CourseSpecializationType;
+  credits?: number;
+  progressPercent?: number;
+  status: 'ACTIVE' | 'COMPLETED' | 'DROPPED';
+  enrolledAt: string;
+}
+
+export interface CourseApprovalLog {
+  id: string;
+  selectionId: string;
+  studentId: string;
+  studentName?: string;
+  action?: 'CREATED_DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'MODIFICATION_REQUIRED' | 'LOCK_TOGGLED' | 'ALLOCATED_TUTOR';
+  previousStatus?: string;
+  nextStatus?: string;
+  newStatus?: string;
+  actorId?: string;
+  actorName: string;
+  actorRole?: string;
+  remarks?: string;
+  timestamp: string;
+}
+
+export interface CourseSelectionPolicy {
+  id: string;
+  academicTerm?: string;
+  maxMinorSelections: number;
+  minMinorSelections: number;
+  maxTotalCredits: number;
+  selectionLocked: boolean;
+  selectionDeadline: string;
+  requireAdminApproval: boolean;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export interface TutorStudentProgressReport {
+  id: string;
+  courseId: string;
+  courseType: CourseSpecializationType;
+  studentId: string;
+  studentName?: string;
+  tutorId?: string;
+  tutorName: string;
+  progressPercent?: number;
+  modulesCompleted?: number;
+  totalModules?: number;
+  assessmentScore?: number;
+  attendanceRate?: number;
+  status?: 'ON_TRACK' | 'NEEDS_SUPPORT' | 'COMPLETED';
+  progressStatus?: 'ON_TRACK' | 'EXCELLING' | 'NEEDS_ATTENTION' | 'COMPLETED';
+  remarks: string;
+  submittedAt: string;
+}
+
+
+export type CoursePaperCategory =
+  | 'Study Materials'
+  | 'Course Notes'
+  | 'Examination Question Papers'
+  | 'Previous Year Question Papers'
+  | 'Assignments'
+  | 'Practical Records'
+  | 'Reference Materials';
+
+export const COURSE_PAPER_CATEGORIES: CoursePaperCategory[] = [
+  'Study Materials',
+  'Course Notes',
+  'Examination Question Papers',
+  'Previous Year Question Papers',
+  'Assignments',
+  'Practical Records',
+  'Reference Materials',
+];
+
+export interface CoursePaper {
+  id: string;
+  courseId: string;
+  courseCode?: string;
+  courseName?: string;
+  semester: string;
+  subject: string;
+  module: string;
+  title: string;
+  description?: string;
+  category: CoursePaperCategory;
+  fileUrl: string;
+  storagePath: string;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  isPublished: boolean;
+  publishedAt?: string;
+  uploadedById: string;
+  uploadedByName?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Semester {
@@ -149,17 +369,40 @@ export interface Batch {
 
 export interface ClassSchedule {
   id: string;
+  title?: string;
   courseId: string;
+  courseCode?: string;
+  courseName?: string;
   batchId: string;
+  batchName?: string;
   subjectId: string;
+  subjectName?: string;
   instructorId: string;
+  instructorName?: string;
   date: string;
   startTime: string;
   endTime: string;
   room: string;
   meetingLink?: string;
+  googleMeetUrl?: string;
+  whatsappGroupUrl?: string;
+  whatsappGroupName?: string;
+  facultyWhatsapp?: string;
+  notes?: string;
+  isActive?: boolean;
+  createdById?: string;
+  createdAt?: string;
+  updatedAt?: string;
   type: 'PHYSICAL' | 'ONLINE' | 'HYBRID' | 'WORKSHOP' | 'LAB' | 'HACKATHON';
 }
+
+export type LiveClassSession = ClassSchedule & {
+  title: string;
+  isActive: boolean;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export interface AttendanceRecord {
   id: string;
@@ -168,6 +411,37 @@ export interface AttendanceRecord {
   status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED';
   date: string;
   hour: number; // Hourly tracking (e.g. Hour 1, Hour 2, Hour 3, Hour 4)
+}
+
+export interface AttendanceQrSession {
+  id: string;
+  token: string;
+  classId: string;
+  courseId: string;
+  courseName?: string;
+  subjectName?: string;
+  date: string;
+  hour: number;
+  instructorId: string;
+  instructorName?: string;
+  active: boolean;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface AttendanceCheckIn {
+  id: string;
+  sessionId: string;
+  token: string;
+  classId: string;
+  courseId?: string;
+  date: string;
+  hour: number;
+  studentId: string;
+  studentName: string;
+  userId: string;
+  status: 'PRESENT' | 'LATE';
+  checkedInAt: string;
 }
 
 export interface Assignment {
@@ -486,6 +760,7 @@ export interface Certificate {
 
 export interface Invoice {
   id: string;
+  invoiceNumber?: string;
   studentId: string;
   courseId: string;
   amount: number;
@@ -498,7 +773,39 @@ export interface Invoice {
     date: string;
     method: string;
     receiptNo: string;
+    utrNumber?: string;
+    verifiedBy?: string;
   }>;
+}
+
+export interface FeePaymentTransaction {
+  id: string;
+  invoiceNumber: string;
+  invoiceId: string;
+  studentId: string;
+  userId: string;
+  studentName: string;
+  studentEmail?: string;
+  courseId: string;
+  courseName?: string;
+  amount: number;
+  currency: 'INR';
+  paymentMethod: 'GPAY_UPI' | 'UPI_QR' | 'UPI_INTENT' | 'RAZORPAY_UPI' | 'BANK_TRANSFER';
+  upiIdPaidTo: string;
+  utrNumber?: string;
+  upiAppName?: string;
+  gatewayOrderId?: string;
+  gatewayPaymentId?: string;
+  gatewaySignatureVerified?: boolean;
+  proofNote?: string;
+  status: 'AWAITING_PAYMENT' | 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED';
+  receiptNumber?: string;
+  verifiedBy?: string;
+  verifiedById?: string;
+  verifiedAt?: string;
+  rejectionReason?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AdmissionApplication {
@@ -566,6 +873,28 @@ export interface CourseSelectionRegistration {
   timestamp?: string;
   createdAt?: string;
   updatedAt?: string;
+  confirmationMessageSent?: boolean;
+  confirmationId?: string;
+  confirmationSentAt?: string;
+  confirmationMessageText?: string;
+}
+
+export interface AdminGrant {
+  id: string;
+  userId?: string;
+  email: string;
+  name?: string;
+  username?: string;
+  role: UserRole;
+  phone?: string;
+  status?: string;
+  grantedBy?: string;
+  grantedByUid?: string;
+  grantedByName?: string;
+  grantedByEmail?: string;
+  grantedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Lead {
@@ -614,6 +943,11 @@ export interface AcademySettings {
   currency: string;
   timezone: string;
   language: string;
+  upiId?: string;
+  upiPayeeName?: string;
+  upiMerchantCode?: string;
+  upiVerified?: boolean;
+  configEditingEnabled?: boolean;
 }
 
 export interface FrontPageCohortItem {
@@ -691,6 +1025,7 @@ export interface FrontPageConfig {
   featuredVideoUrl: string;
   featuredVideoPosterUrl: string;
   posters: FrontPagePosterItem[];
+  editingEnabled?: boolean;
   updatedAt: string;
   updatedBy: string;
 }
@@ -702,11 +1037,16 @@ export const INITIAL_SETTINGS: AcademySettings = {
   address: "Thiruvananthapuram, Kerala, India",
   phone: "+91 94460 00000",
   adminWhatsAppPhone: "+91 94460 12345",
-  email: "academy@swanayamedia.com",
+  email: "swanayamediaacedmins@gmail.com",
   website: "https://academy.swanayamedia.com",
   currency: "INR (₹)",
   timezone: "Asia/Kolkata",
-  language: "English"
+  language: "English",
+  upiId: "swanayamedia@okaxis",
+  upiPayeeName: "Swanaya Media Academy",
+  upiMerchantCode: "8299",
+  upiVerified: true,
+  configEditingEnabled: true
 };
 
 export const INITIAL_FRONT_PAGE_CONFIG: FrontPageConfig = {
@@ -781,7 +1121,7 @@ export const INITIAL_FRONT_PAGE_CONFIG: FrontPageConfig = {
   admissionsSubtitle: "No complex procedures. Fill in your details and an admission counselor will contact you within 24 hours.",
   footerBrandTitle: "SWANEXA AI",
   footerDescription: "An EdTech Solution by Swanaya Media Enterprises. SWANEXA AI is an integrated Education Technology platform designed to digitally transform schools, colleges, universities and educational institutions. Combining institutional ERP, Learning Management Systems (LMS), college website development, academic administration and AI-powered solutions, SWANEXA AI provides a unified digital ecosystem for modern education.\n\nTagline: Transforming Education Through Intelligence.\nParent Company: Swanaya Media Enterprises\nIndustry: Education Technology (EdTech)\nBusiness Model: B2B SaaS & Institutional Technology Solutions",
-  contactEmail: "academy@swanayamedia.com",
+  contactEmail: "swanayamediaacedmins@gmail.com",
   contactPhone: "+91 94460 00000",
   contactLocation: "Thiruvananthapuram, Kerala",
   copyrightText: "© 2026 Swanaya Media Academy. Training & Certification Wing of Swanaya Media Enterprises. All Rights Reserved.",
@@ -797,6 +1137,7 @@ export const INITIAL_FRONT_PAGE_CONFIG: FrontPageConfig = {
   featuredVideoUrl: "",
   featuredVideoPosterUrl: "",
   posters: [],
+  editingEnabled: true,
   updatedAt: "2026-10-01T00:00:00.000Z",
   updatedBy: "System Default"
 };
@@ -811,11 +1152,42 @@ export const INITIAL_USERS: User[] = [
   { id: "usr-md", username: "aadithyan", email: "aadithyan.menon@swanayamedia.com", name: "AADITHYAN M MENON", role: "MD", avatarUrl: "https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon", status: "ACTIVE", createdAt: "2026-01-01", isVerified: true },
   { id: "usr-principal", username: "principal", email: "principal@swanayamedia.com", name: "Academy Principal", role: "PRINCIPAL", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Principal", status: "ACTIVE", createdAt: "2026-01-01", isVerified: true },
   { id: "usr-navven", username: "navven", email: "navven.admin@swanayamedia.com", name: "NAVVEN (Administrator)", role: "ADMIN", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Naveen", status: "ACTIVE", createdAt: "2026-01-02", isVerified: true },
+  { id: "usr-tutor", username: "instructor", email: "instructor@swanaya.edu", name: "Prof. Vikram Sen", role: "INSTRUCTOR", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=VikramSen", status: "ACTIVE", createdAt: "2026-01-03", isVerified: true },
+  { id: "usr-student", username: "student", email: "student@swanaya.edu", name: "Arjun Ramesh", role: "STUDENT", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=ArjunRamesh", status: "ACTIVE", createdAt: "2026-01-04", isVerified: true },
   { id: "usr-reviewer", username: "reviewer", email: "reviewer@swanayamedia.com", name: "Academic Reviewer", role: "REVIEWER", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Reviewer", status: "ACTIVE", createdAt: "2026-01-05", isVerified: true },
   { id: "usr-alumni", username: "alumni", email: "alumni@swanayamedia.com", name: "Alumni Graduate", role: "ALUMNI", avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alumni", status: "ACTIVE", createdAt: "2026-01-08", isVerified: true }
 ];
 
-export const INITIAL_INSTRUCTORS: Instructor[] = [];
+export const INITIAL_INSTRUCTORS: Instructor[] = [
+  {
+    id: "inst-1",
+    userId: "usr-tutor",
+    name: "Prof. Vikram Sen",
+    email: "instructor@swanaya.edu",
+    phone: "+91 94460 11223",
+    qualification: "M.Tech in Digital Media & AI Systems",
+    specialization: "AI Production Pipelines & VFX",
+    experience: "8+ Years Academic & Industry",
+    bio: "Lead Faculty in Media Science, Visual Effects and Generative AI at Swanaya Media Academy.",
+    avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=VikramSen",
+    status: "ACTIVE",
+    assignedSubjects: ["sub-101", "sub-102"]
+  },
+  {
+    id: "inst-2",
+    userId: "usr-md",
+    name: "AADITHYAN M MENON",
+    email: "aadithyan.menon@swanayamedia.com",
+    phone: "+91 94460 77889",
+    qualification: "MBA in Media Management & Creative Technology",
+    specialization: "Digital Strategy & Media Direction",
+    experience: "10+ Years",
+    bio: "Managing Director and Senior Mentor in Advanced Media at Swanaya.",
+    avatarUrl: "https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon",
+    status: "ACTIVE",
+    assignedSubjects: ["sub-103"]
+  }
+];
 export const INITIAL_STUDENTS: Student[] = [];
 export const INITIAL_CLASSES: ClassSchedule[] = [];
 export const INITIAL_ATTENDANCE: AttendanceRecord[] = [];
@@ -874,6 +1246,8 @@ export class SwanayaDatabase {
         students: [],
         classes: [],
         attendance: [],
+        attendanceQrSessions: [],
+        attendanceCheckins: [],
         assignments: [],
         submissions: [],
         exams: [],
@@ -883,6 +1257,7 @@ export class SwanayaDatabase {
         hackathonRegistrations: [],
         certificates: [],
         invoices: [],
+        paymentTransactions: [],
         leads: [],
         applications: [],
         courseRegistrations: [],
@@ -894,7 +1269,15 @@ export class SwanayaDatabase {
         reviews: [],
         questionPapers: [],
         mcqExams: [],
-        examSubmissions: []
+        examSubmissions: [],
+        courseCategories: [],
+        courseModules: [],
+        courseCredits: [],
+        tutorCourseAllocations: [],
+        studentCourseSelections: [],
+        courseEnrollments: [],
+        courseApprovalLogs: [],
+        tutorProgressReports: []
       };
 
       Object.entries(keys).forEach(([key, defaultValue]) => {
@@ -911,6 +1294,29 @@ export class SwanayaDatabase {
           const principalSeed = INITIAL_USERS.find((u) => u.role === "PRINCIPAL");
           if (principalSeed) {
             localStorage.setItem("sma_users", JSON.stringify([existingUsers[0], principalSeed, ...existingUsers.slice(1)].filter(Boolean)));
+          }
+        }
+      }
+
+      if (!localStorage.getItem("sma_tutor_faculty_seeded_v2")) {
+        localStorage.setItem("sma_tutor_faculty_seeded_v2", "true");
+        // Ensure users include tutor and student demo accounts
+        const existingUsersRaw = localStorage.getItem("sma_users");
+        const existingUsers: User[] = existingUsersRaw ? JSON.parse(existingUsersRaw) : [];
+        const missingUsers = INITIAL_USERS.filter((u) => !existingUsers.some((eu) => eu.id === u.id || eu.email === u.email));
+        if (missingUsers.length > 0) {
+          localStorage.setItem("sma_users", JSON.stringify([...existingUsers, ...missingUsers]));
+        }
+
+        // Ensure instructors list has initial instructors
+        const existingInstRaw = localStorage.getItem("sma_instructors");
+        const existingInst: Instructor[] = existingInstRaw ? JSON.parse(existingInstRaw) : [];
+        if (!Array.isArray(existingInst) || existingInst.length === 0) {
+          localStorage.setItem("sma_instructors", JSON.stringify(INITIAL_INSTRUCTORS));
+        } else {
+          const missingInst = INITIAL_INSTRUCTORS.filter((i) => !existingInst.some((ei) => ei.id === i.id || ei.email === i.email));
+          if (missingInst.length > 0) {
+            localStorage.setItem("sma_instructors", JSON.stringify([...existingInst, ...missingInst]));
           }
         }
       }
@@ -1013,6 +1419,8 @@ export class SwanayaDatabase {
     localStorage.setItem("sma_students", JSON.stringify([]));
     localStorage.setItem("sma_classes", JSON.stringify([]));
     localStorage.setItem("sma_attendance", JSON.stringify([]));
+    localStorage.setItem("sma_attendanceQrSessions", JSON.stringify([]));
+    localStorage.setItem("sma_attendanceCheckins", JSON.stringify([]));
     localStorage.setItem("sma_assignments", JSON.stringify([]));
     localStorage.setItem("sma_submissions", JSON.stringify([]));
     localStorage.setItem("sma_exams", JSON.stringify([]));
@@ -1022,6 +1430,7 @@ export class SwanayaDatabase {
     localStorage.setItem("sma_hackathonRegistrations", JSON.stringify([]));
     localStorage.setItem("sma_certificates", JSON.stringify([]));
     localStorage.setItem("sma_invoices", JSON.stringify([]));
+    localStorage.setItem("sma_paymentTransactions", JSON.stringify([]));
     localStorage.setItem("sma_leads", JSON.stringify([]));
     localStorage.setItem("sma_applications", JSON.stringify([]));
     localStorage.setItem("sma_courseRegistrations", JSON.stringify([]));
@@ -1060,6 +1469,8 @@ export class SwanayaDatabase {
       students: INITIAL_STUDENTS,
       classes: INITIAL_CLASSES,
       attendance: INITIAL_ATTENDANCE,
+      attendanceQrSessions: [],
+      attendanceCheckins: [],
       assignments: INITIAL_ASSIGNMENTS,
       submissions: INITIAL_SUBMISSIONS,
       exams: INITIAL_EXAMS,
@@ -1069,6 +1480,7 @@ export class SwanayaDatabase {
       hackathonRegistrations: INITIAL_HACKATHON_REGISTRATIONS,
       certificates: INITIAL_CERTIFICATES,
       invoices: INITIAL_INVOICES,
+      paymentTransactions: [],
       leads: INITIAL_LEADS,
       applications: INITIAL_APPLICATIONS,
       notifications: INITIAL_NOTIFICATIONS,

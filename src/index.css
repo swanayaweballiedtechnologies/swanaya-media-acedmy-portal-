@@ -1,38 +1,129 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Playfair Display", Georgia, serif;
   --font-mono: "JetBrains Mono", monospace;
-  
-  --color-brand-gold: #D4AF37;
-  --color-brand-gold-hover: #F3CD5B;
-  --color-brand-dark-950: #05070B;
-  --color-brand-dark-900: #0A0D14;
-  --color-brand-dark-800: #111622;
-  --color-brand-dark-700: #1E2538;
+
+  --color-sma-primary: var(--sma-primary, #6941C6);
+  --color-sma-secondary: var(--sma-secondary, #243B70);
+  --color-sma-accent: var(--sma-accent, #269B78);
+  --color-sma-bg: var(--sma-bg, #F7F7FA);
+  --color-sma-surface: var(--sma-surface, #FFFFFF);
+  --color-sma-text-primary: var(--sma-text-primary, #20243A);
+  --color-sma-text-secondary: var(--sma-text-secondary, #74798A);
+  --color-sma-border: var(--sma-border, #E5E5ED);
+  --color-sma-dark-bg: var(--sma-dark-bg, #151525);
+  --color-sma-dark-surface: var(--sma-dark-surface, #202038);
+}
+
+:root {
+  --sma-primary: #6941C6;
+  --sma-primary-hover: #5733AD;
+  --sma-primary-soft: rgba(105, 65, 198, 0.12);
+  --sma-secondary: #243B70;
+  --sma-secondary-hover: #1C2F5A;
+  --sma-secondary-soft: rgba(36, 59, 112, 0.12);
+  --sma-accent: #269B78;
+  --sma-accent-hover: #1E8264;
+  --sma-accent-soft: rgba(38, 155, 120, 0.12);
+
+  --sma-bg: #F7F7FA;
+  --sma-surface: #FFFFFF;
+  --sma-text-primary: #20243A;
+  --sma-text-secondary: #74798A;
+  --sma-border: #E5E5ED;
+
+  --sma-dark-bg: #151525;
+  --sma-dark-surface: #202038;
+  --sma-dark-text-primary: #F5F4FA;
+  --sma-dark-text-secondary: #B3B6CA;
+  --sma-dark-border: #333452;
+
+  /* Active resolved surface/text tokens (automatically flip in .dark) */
+  --sma-active-bg: var(--sma-bg);
+  --sma-active-surface: var(--sma-surface);
+  --sma-active-surface-alt: #F1F1F7;
+  --sma-active-text: var(--sma-text-primary);
+  --sma-active-text-muted: var(--sma-text-secondary);
+  --sma-active-border: var(--sma-border);
+
+  /* Default portal role tokens (Admin fallback) */
+  --sma-role-accent: var(--sma-primary);
+  --sma-role-accent-hover: var(--sma-primary-hover);
+  --sma-role-accent-soft: var(--sma-primary-soft);
+  --sma-role-accent-text: var(--sma-primary);
+}
+
+.dark {
+  --sma-active-bg: var(--sma-dark-bg);
+  --sma-active-surface: var(--sma-dark-surface);
+  --sma-active-surface-alt: #1A1A2E;
+  --sma-active-text: var(--sma-dark-text-primary);
+  --sma-active-text-muted: var(--sma-dark-text-secondary);
+  --sma-active-border: var(--sma-dark-border);
+  --sma-primary-soft: rgba(169, 133, 214, 0.16);
+  --sma-secondary-soft: rgba(117, 167, 224, 0.16);
+  --sma-accent-soft: rgba(38, 155, 120, 0.18);
+}
+
+[data-sma-portal][data-role="ADMIN"] {
+  --sma-role-accent: var(--sma-primary);
+  --sma-role-accent-hover: var(--sma-primary-hover);
+  --sma-role-accent-soft: var(--sma-primary-soft);
+  --sma-role-accent-text: var(--sma-primary);
+}
+
+[data-sma-portal][data-role="TUTOR"] {
+  --sma-role-accent: var(--sma-secondary);
+  --sma-role-accent-hover: var(--sma-secondary-hover);
+  --sma-role-accent-soft: var(--sma-secondary-soft);
+  --sma-role-accent-text: var(--sma-secondary);
+}
+
+[data-sma-portal][data-role="STUDENT"] {
+  --sma-role-accent: var(--sma-accent);
+  --sma-role-accent-hover: var(--sma-accent-hover);
+  --sma-role-accent-soft: var(--sma-accent-soft);
+  --sma-role-accent-text: var(--sma-accent);
+}
+
+.dark [data-sma-portal][data-role="ADMIN"] {
+  --sma-role-accent-text: #C4AEF2;
+}
+
+.dark [data-sma-portal][data-role="TUTOR"] {
+  --sma-role-accent-text: #8CB3FA;
+}
+
+.dark [data-sma-portal][data-role="STUDENT"] {
+  --sma-role-accent-text: #5ED4AE;
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     font-family: var(--font-sans);
-    background-color: var(--color-brand-dark-900);
-    color: #F8FAFC;
+    background-color: var(--sma-active-bg);
+    color: var(--sma-active-text);
   }
-  
-  /* Simple smooth scrollbar for premium feel */
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: var(--color-brand-dark-950);
+    background: var(--sma-active-bg);
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-brand-dark-700);
+    background: var(--sma-active-border);
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-brand-gold);
+    background: var(--sma-primary);
   }
 }

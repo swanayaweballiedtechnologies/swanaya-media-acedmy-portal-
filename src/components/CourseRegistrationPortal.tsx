@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Send, AlertCircle, CheckCircle2, ChevronDown, ShieldCheck, Clock } from 'lucide-react';
+import { BookOpen, Send, AlertCircle, CheckCircle2, ChevronDown, ShieldCheck, Clock, RefreshCw, MessageCircle } from 'lucide-react';
 import {
   Batch,
   Course,
@@ -28,10 +28,12 @@ const DEFAULT_BATCH_OPTIONS = [
 ];
 
 export default function CourseRegistrationPortal({ studentUser, onRefreshAllData }: CourseRegistrationPortalProps) {
-  const [courses, setCourses] = useState<CatalogCourse[]>(() => SwanayaDatabase.get<Course[]>('courses') || []);
+  const [courses, setCourses] = useState<CatalogCourse[]>([]);
   const [batches] = useState<Batch[]>(() => SwanayaDatabase.get<Batch[]>('batches') || []);
   const [myRequests, setMyRequests] = useState<CourseSelectionRegistration[]>([]);
   const [loading, setLoading] = useState(true);
+  const [coursesError, setCoursesError] = useState<string | null>(null);
+  const [coursesRetryKey, setCoursesRetryKey] = useState(0);
 
   // Option 1: Program & Study Level
   const [levelFilter, setLevelFilter] = useState<string>('ALL');
@@ -52,6 +54,19 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
   const [success, setSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // Contact phone & course confirmation receipt states
+  const [contactPhone, setContactPhone] = useState<string>(
+    () => studentUser.phone || studentUser.whatsappPhone || ''
+  );
+  const [confirmationReceipt, setConfirmationReceipt] = useState<{
+    confirmationId: string;
+    recipientPhone: string;
+    academySupportPhone: string;
+    messageText: string;
+    whatsappUrl: string;
+    sentAt: string;
+  } | null>(null);
+
   const filterForStudent = (list: CourseSelectionRegistration[]) => {
     const uid = auth.currentUser?.uid;
     return list
@@ -66,22 +81,30 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
   };
 
   useEffect(() => {
+    setLoading(true);
+    setCoursesError(null);
+    const unsubscribe = academyService.subscribeCourses({
+      includeUnpublished: false,
+      onData: (activeCatalog) => {
+        setCourses(activeCatalog as CatalogCourse[]);
+        setLoading(false);
+        setCoursesError(null);
+      },
+      onError: (err) => {
+        setCoursesError(err.message || 'Unable to load published course catalog.');
+        setLoading(false);
+      },
+    });
+    return () => unsubscribe();
+  }, [coursesRetryKey]);
+
+  useEffect(() => {
     let mounted = true;
-    const loadCatalogAndHistory = async () => {
-      setLoading(true);
-      const localCourses = SwanayaDatabase.get<Course[]>('courses') || [];
+    const loadHistory = async () => {
       const localRegs = SwanayaDatabase.get<CourseSelectionRegistration[]>('courseRegistrations') || [];
       setMyRequests(filterForStudent(localRegs));
 
-      let cloudCourses: any[] = [];
       let cloudRegs: any[] = [];
-      try {
-        const fetched = await academyService.getCourses();
-        if (Array.isArray(fetched)) cloudCourses = fetched;
-      } catch {
-        // Fallback to local database courses
-      }
-
       if (auth.currentUser) {
         try {
           const fetchedRegs = await academyService.getRegistrations(auth.currentUser.uid);
@@ -92,33 +115,6 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
       }
 
       if (!mounted) return;
-      const mergedMap = new Map<string, CatalogCourse>();
-      localCourses.forEach((c) => {
-        if (c?.id) mergedMap.set(c.id, c);
-      });
-      cloudCourses.forEach((raw: any) => {
-        if (raw?.id && !mergedMap.has(raw.id)) {
-          mergedMap.set(raw.id, {
-            id: raw.id,
-            code: raw.code || raw.id.slice(0, 8).toUpperCase(),
-            name: raw.name || raw.title || 'Academy Course',
-            title: raw.title || raw.name,
-            description: raw.description || 'Industry-aligned academy program.',
-            duration: raw.duration || '6 Months',
-            level: raw.level || 'DIPLOMA',
-            eligibility: raw.eligibility || 'Open to enrolled academy students',
-            fee: Number(raw.fee ?? raw.fees ?? 0),
-            mode: raw.mode || 'HYBRID',
-            status: raw.status || 'ACTIVE',
-            thumbnailUrl: raw.thumbnailUrl || '',
-            coordinator: raw.coordinator || 'Academic Director',
-            category: raw.category || 'Media & Technology',
-            learningObjectives: Array.isArray(raw.learningObjectives) ? raw.learningObjectives : [],
-            careerOutcomes: Array.isArray(raw.careerOutcomes) ? raw.careerOutcomes : [],
-          });
-        }
-      });
-
       const regMap = new Map<string, CourseSelectionRegistration>();
       localRegs.forEach((r) => r?.id && regMap.set(r.id, r));
       cloudRegs.forEach((raw: any) => {
@@ -127,12 +123,8 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
       const allRegs = Array.from(regMap.values());
       SwanayaDatabase.set('courseRegistrations', allRegs);
       setMyRequests(filterForStudent(allRegs));
-
-      const activeCatalog = Array.from(mergedMap.values()).filter((c) => c.status !== 'ARCHIVED');
-      setCourses(activeCatalog);
-      setLoading(false);
     };
-    loadCatalogAndHistory();
+    loadHistory();
     return () => {
       mounted = false;
     };
@@ -190,6 +182,7 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
     }
     setSubmitError(null);
 
+    const activeContactPhone = contactPhone.trim() || studentUser.phone || studentUser.whatsappPhone || '';
     setIsSubmitting(true);
     try {
       const savedRecord = await academyService.registerForCourse(
@@ -198,7 +191,7 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
           studentId: studentUser.id,
           studentName: studentUser.name,
           studentEmail: studentUser.email,
-          studentPhone: studentUser.phone || '',
+          studentPhone: activeContactPhone,
           source: 'PORTAL_COURSE_SELECTION',
           courseId: activeCourse.id,
           courseCode: activeCourse.code,
@@ -219,12 +212,53 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
         }
       );
 
+      let receiptPayload: typeof confirmationReceipt = null;
+      try {
+        const confirmRes = await academyService.sendCourseRegistrationConfirmation({
+          registrationId: (savedRecord as any)?.id,
+          userId: studentUser.userId || studentUser.id,
+          studentId: studentUser.id,
+          studentName: studentUser.name,
+          studentEmail: studentUser.email,
+          phone: activeContactPhone,
+          channel: 'WHATSAPP',
+          courseId: activeCourse.id,
+          courseCode: activeCourse.code,
+          courseTitle: activeCourse.title || activeCourse.name,
+          preferredBatch,
+          studyMode,
+          preferredSchedule,
+          qualification,
+          careerGoals,
+          source: 'PORTAL_COURSE_SELECTION',
+        });
+        receiptPayload = {
+          confirmationId: confirmRes.confirmationId,
+          recipientPhone: confirmRes.recipientPhone || activeContactPhone,
+          academySupportPhone: confirmRes.academyVerificationPhone || '+91 94460 55555',
+          messageText: confirmRes.messageText,
+          whatsappUrl: confirmRes.whatsappUrl,
+          sentAt: confirmRes.sentAt || new Date().toISOString(),
+        };
+      } catch {
+        // Non-fatal fallback
+      }
+
       if (savedRecord) {
+        const enrichedRecord: CourseSelectionRegistration = {
+          ...(savedRecord as CourseSelectionRegistration),
+          confirmationMessageSent: Boolean(receiptPayload),
+          confirmationId: receiptPayload?.confirmationId,
+          confirmationSentAt: receiptPayload?.sentAt,
+          confirmationMessageText: receiptPayload?.messageText,
+        };
         const existingLocal = SwanayaDatabase.get<CourseSelectionRegistration[]>('courseRegistrations') || [];
-        const nextAll = [savedRecord as CourseSelectionRegistration, ...existingLocal];
+        const nextAll = [enrichedRecord, ...existingLocal];
         SwanayaDatabase.set('courseRegistrations', nextAll);
         setMyRequests(filterForStudent(nextAll));
       }
+
+      setConfirmationReceipt(receiptPayload);
 
       const notifs = SwanayaDatabase.get<Notification[]>('notifications') || [];
       const newNotif: Notification = {
@@ -273,8 +307,28 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
       </div>
 
       {loading ? (
-        <div className="p-12 text-center text-slate-500 font-mono text-xs animate-pulse border border-slate-800 rounded-xl bg-slate-900/40">
+        <div className="p-12 text-center text-slate-400 font-mono text-xs animate-pulse border border-slate-800 rounded-xl bg-slate-900/40">
           LOADING ACADEMIC COURSE CATALOG...
+        </div>
+      ) : coursesError ? (
+        <div className="p-6 bg-rose-500/10 border border-rose-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <p className="text-sm font-bold text-rose-300">Unable to load published courses</p>
+            <p className="text-xs text-slate-300">{coursesError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCoursesRetryKey((k) => k + 1)}
+            className="px-4 py-2 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-100 rounded text-xs font-bold uppercase flex items-center gap-1.5 cursor-pointer shrink-0"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Retry
+          </button>
+        </div>
+      ) : courses.length === 0 ? (
+        <div className="p-8 text-center bg-amber-500/5 border border-amber-500/30 rounded-xl space-y-2">
+          <p className="text-sm font-serif font-bold text-amber-300">No Courses Published Yet</p>
+          <p className="text-xs text-slate-400">New programs will appear here automatically once published by the Academy Administration.</p>
         </div>
       ) : (
         <form onSubmit={handleSubmitRegistration} className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -527,22 +581,77 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
             )}
 
             {success ? (
-              <div className="py-6 text-center space-y-3 bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-4">
-                <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-                <h4 className="text-base font-serif font-bold text-white">Submitted for Verification</h4>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Your course selection for <strong className="text-amber-300">{activeCourse?.title || activeCourse?.name}</strong> has been sent to your Academy Department and Managing Director for verification.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setSuccess(false)}
-                  className="px-4 py-2 bg-slate-900 border border-slate-700 rounded text-xs text-slate-200 hover:text-white cursor-pointer"
-                >
-                  Configure Another Selection
-                </button>
+              <div className="py-5 space-y-4 bg-emerald-500/5 border border-emerald-500/25 rounded-xl px-4">
+                <div className="text-center space-y-2">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+                  <h4 className="text-base font-serif font-bold text-white">
+                    Course Registered &amp; Confirmation Message Sent!
+                  </h4>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Your selection for <strong className="text-amber-300">{activeCourse?.title || activeCourse?.name}</strong> has been logged for Admin &amp; MD acceptance.
+                  </p>
+                </div>
+
+                {confirmationReceipt && (
+                  <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-lg space-y-2 text-left text-xs">
+                    <div className="flex items-center justify-between gap-2 text-[11px] font-mono">
+                      <span className="text-emerald-400 font-bold">
+                        CONFIRMATION ID: {confirmationReceipt.confirmationId}
+                      </span>
+                      <span className="text-slate-400">SAVED</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      {confirmationReceipt.messageText}
+                    </p>
+                    <p className="text-[11px] font-mono text-slate-400">
+                      {confirmationReceipt.recipientPhone ? (
+                        <>
+                          Contact: <strong className="text-white">{confirmationReceipt.recipientPhone}</strong> ·{' '}
+                        </>
+                      ) : null}
+                      Academy Support:{' '}
+                      <strong className="text-emerald-400">{confirmationReceipt.academySupportPhone}</strong>
+                    </p>
+                    {confirmationReceipt.whatsappUrl && (
+                      <a
+                        href={confirmationReceipt.whatsappUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center justify-center gap-1.5 w-full py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold uppercase rounded transition-colors"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Open WhatsApp Support</span>
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => setSuccess(false)}
+                    className="px-4 py-2 bg-slate-900 border border-slate-700 rounded text-xs text-slate-200 hover:text-white cursor-pointer"
+                  >
+                    Configure Another Selection
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="portal-cs-phone" className="text-xs font-medium text-slate-300 block">
+                    Contact Number (Optional)
+                  </label>
+                  <input
+                    id="portal-cs-phone"
+                    type="tel"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    placeholder="+91 98765 43210"
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
                 <div className="space-y-1.5">
                   <label htmlFor="portal-cs-note" className="text-xs font-medium text-slate-300 block">
                     Statement of Purpose / Notes (Optional)
@@ -556,7 +665,6 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
                     className="w-full bg-slate-950 border border-slate-800 rounded px-3.5 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
                   />
                 </div>
-
 
                 {submitError && (
                   <div
@@ -574,7 +682,7 @@ export default function CourseRegistrationPortal({ studentUser, onRefreshAllData
                   className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded cursor-pointer shadow-lg shadow-amber-500/10 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>{isSubmitting ? 'Submitting Selection...' : 'Submit for Department & MD Verification'}</span>
+                  <span>{isSubmitting ? 'Submitting & Sending Confirmation...' : 'Register Course & Send Confirmation'}</span>
                 </button>
               </div>
             )}

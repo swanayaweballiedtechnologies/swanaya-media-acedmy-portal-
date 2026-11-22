@@ -14,6 +14,7 @@ import {
 } from '../db/mockDb';
 import { academyService } from '../services/academyService';
 import { auth } from '../firebase';
+import { useAuth } from './FirebaseAuthProvider';
 
 interface ExaminationEngineModuleProps {
   mode: 'STUDENT' | 'INSTRUCTOR' | 'MD';
@@ -72,6 +73,8 @@ export default function ExaminationEngineModule({
   const [activeSection, setActiveSection] = useState<'papers' | 'mcq' | 'evaluations'>(initialSection);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const { profile: firebaseProfile, loading: firebaseAuthLoading, isAdmin: isFirebaseAdmin } = useAuth();
+
   useEffect(() => {
     setActiveSection(initialSection);
   }, [initialSection]);
@@ -80,13 +83,27 @@ export default function ExaminationEngineModule({
   useEffect(() => {
     let cancelled = false;
     const syncAll = async () => {
-      if (!auth.currentUser) return;
+      if (firebaseAuthLoading || !auth.currentUser) return;
+
+      const fbRole = String(firebaseProfile?.role || '').toUpperCase();
+      const isFirebaseInstructor = ['INSTRUCTOR', 'REVIEWER'].includes(fbRole);
+      const canListAllExamDocs =
+        mode !== 'STUDENT' && (isFirebaseAdmin || isFirebaseInstructor);
+      const uid = auth.currentUser.uid;
+
+      const listOptions =
+        mode === 'STUDENT'
+          ? { onlyVerified: true }
+          : canListAllExamDocs
+          ? undefined
+          : { onlyVerified: true, createdById: uid };
+
       try {
         const [cloudPapers, cloudMcqs, cloudSubs] = await Promise.all([
-          academyService.getQuestionPapers().catch(() => []),
-          academyService.getMcqExams().catch(() => []),
+          academyService.getQuestionPapers(listOptions).catch(() => []),
+          academyService.getMcqExams(listOptions).catch(() => []),
           academyService
-            .getExamSubmissions(mode === 'STUDENT' ? auth.currentUser.uid : undefined)
+            .getExamSubmissions(canListAllExamDocs ? undefined : uid)
             .catch(() => []),
         ]);
         if (cancelled) return;
@@ -133,7 +150,7 @@ export default function ExaminationEngineModule({
     return () => {
       cancelled = true;
     };
-  }, [mode]);
+  }, [mode, firebaseAuthLoading, isFirebaseAdmin, firebaseProfile?.role]);
 
   const setExamSubmissionsSafe = (next: StudentExamSubmission[]) => {
     setSubmissions(next);
@@ -840,12 +857,12 @@ export default function ExaminationEngineModule({
         </div>
 
         {/* Section Switcher Tabs */}
-        <div className="flex flex-wrap gap-1.5 bg-slate-950 border border-slate-800 p-1 rounded-lg shrink-0">
+        <div className="flex flex-wrap gap-1.5 bg-[#FFFFFF] dark:bg-[#1D1D2B] border border-[#E5E1EA] dark:border-[#38384B] p-1 rounded-lg shrink-0">
           <button
             type="button"
             onClick={() => setActiveSection('papers')}
-            className={`px-3.5 py-2 rounded text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
-              activeSection === 'papers' ? 'bg-amber-500 text-black' : 'text-slate-400 hover:text-white'
+            className={`px-3.5 py-2 rounded-md text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+              activeSection === 'papers' ? 'bg-[var(--sma-role-accent)] text-white dark:text-[#151521]' : 'text-[#555770] dark:text-[#B8B5C5] hover:text-[#25263A] dark:hover:text-[#F5F3FA]'
             }`}
           >
             {mode === 'MD'
@@ -857,8 +874,8 @@ export default function ExaminationEngineModule({
           <button
             type="button"
             onClick={() => setActiveSection('mcq')}
-            className={`px-3.5 py-2 rounded text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
-              activeSection === 'mcq' ? 'bg-amber-500 text-black' : 'text-slate-400 hover:text-white'
+            className={`px-3.5 py-2 rounded-md text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+              activeSection === 'mcq' ? 'bg-[var(--sma-role-accent)] text-white dark:text-[#151521]' : 'text-[#555770] dark:text-[#B8B5C5] hover:text-[#25263A] dark:hover:text-[#F5F3FA]'
             }`}
           >
             {mode === 'MD'
@@ -870,8 +887,8 @@ export default function ExaminationEngineModule({
           <button
             type="button"
             onClick={() => setActiveSection('evaluations')}
-            className={`px-3.5 py-2 rounded text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
-              activeSection === 'evaluations' ? 'bg-amber-500 text-black' : 'text-slate-400 hover:text-white'
+            className={`px-3.5 py-2 rounded-md text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+              activeSection === 'evaluations' ? 'bg-[var(--sma-role-accent)] text-white dark:text-[#151521]' : 'text-[#555770] dark:text-[#B8B5C5] hover:text-[#25263A] dark:hover:text-[#F5F3FA]'
             }`}
           >
             {mode === 'MD'

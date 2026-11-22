@@ -3,22 +3,81 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Swanaya Media Academy | Management System</title>
+    <script async src="https://www.googletagmanager.com/gtm.js?id=GTM-N6RCV3WL"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+    </script>
+    <title>Swanaya Media Academy | Training &amp; Certification Division</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="apple-touch-icon" href="/favicon.svg">
     <link rel="manifest" href="/site.webmanifest">
-    <meta name="description" content="Premium EdTech SaaS ERP and LMS of Swanaya Media Enterprises. Track student progress, attendance, and credentials." />
-    <meta property="og:title" content="Swanaya Media Academy | Management System" />
-    <meta property="og:description" content="Premium EdTech SaaS ERP and LMS of Swanaya Media Enterprises. Track student progress, attendance, and credentials." />
+    <meta name="description" content="Explore AI media, creative direction, and full-stack certification programmes with Swanaya Media Academy, the training division of Swanaya Media Enterprises." />
+    <meta property="og:title" content="Swanaya Media Academy | Training &amp; Certification Division" />
+    <meta property="og:description" content="Explore AI media, creative direction, and full-stack certification programmes with Swanaya Media Academy, the training division of Swanaya Media Enterprises." />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Swanaya Media Academy" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Swanaya Media Academy | Training &amp; Certification Division" />
+    <meta name="twitter:description" content="Explore AI media, creative direction, and full-stack certification programmes with Swanaya Media Academy." />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "EducationalOrganization",
+        "name": "Swanaya Media Academy",
+        "alternateName": "SMA",
+        "description": "Training and certification division of Swanaya Media Enterprises offering diploma, major/minor specializations, and industry-oriented media and engineering programmes.",
+        "sameAs": [
+          "https://www.instagram.com/swanaya_media_acedemy_for_ai/"
+        ],
+        "parentOrganization": {
+          "@type": "Organization",
+          "name": "Swanaya Media Enterprises"
+        }
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('sma_theme');
+          var cachedCfgRaw = localStorage.getItem('sma_theme_config_v1');
+          var cachedCfg = cachedCfgRaw ? JSON.parse(cachedCfgRaw) : null;
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = (saved === 'light' || saved === 'dark')
+            ? saved
+            : (cachedCfg && (cachedCfg.defaultMode === 'light' || cachedCfg.defaultMode === 'dark'))
+              ? cachedCfg.defaultMode
+              : (prefersDark ? 'dark' : 'light');
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+          document.documentElement.dataset.theme = theme;
+          if (cachedCfg && cachedCfg.palette) {
+            var p = cachedCfg.palette;
+            var s = document.documentElement.style;
+            if (p.primary) s.setProperty('--sma-primary', p.primary);
+            if (p.secondary) s.setProperty('--sma-secondary', p.secondary);
+            if (p.accent) s.setProperty('--sma-accent', p.accent);
+            if (p.background) s.setProperty('--sma-bg', p.background);
+            if (p.surface) s.setProperty('--sma-surface', p.surface);
+            if (p.textPrimary) s.setProperty('--sma-text-primary', p.textPrimary);
+            if (p.textSecondary) s.setProperty('--sma-text-secondary', p.textSecondary);
+            if (p.border) s.setProperty('--sma-border', p.border);
+            if (p.darkBackground) s.setProperty('--sma-dark-bg', p.darkBackground);
+            if (p.darkSurface) s.setProperty('--sma-dark-surface', p.darkSurface);
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="bg-[#0A0D14] text-slate-100 antialiased selection:bg-amber-500/30 selection:text-amber-200">
+  <body class="bg-[#F7F7FA] text-[#20243A] dark:bg-[#151525] dark:text-[#F5F4FA] antialiased transition-colors duration-200 selection:bg-[#6941C6]/25 selection:text-[#20243A] dark:selection:bg-[#6941C6]/35 dark:selection:text-[#F5F4FA]">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

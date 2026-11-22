@@ -12,18 +12,43 @@ service cloud.firestore {
     
     // Admin check - lookup role in users collection safely
     function isAdminEmail() {
-      return isSignedIn() && (
-        request.auth.token.email == 'swanayamediaenterprisesadmins@gmail.com' ||
-        request.auth.token.email == 'aadithyan@swanayamedia.com'
-      );
+      return isSignedIn() &&
+             request.auth.token.email_verified == true && (
+               request.auth.token.email == 'swanayamediaenterprisesadmins@gmail.com' ||
+               request.auth.token.email == 'swanyamediaenterprisesadmins@gmail.com' ||
+               request.auth.token.email == 'aadithyan@swanayamedia.com' ||
+               request.auth.token.email == 'aadithyan.menon@swanayamedia.com' ||
+               request.auth.token.email == 'aadithyanmmenon@gmail.com'
+             );
     }
 
     function isAdmin() { 
       return isSignedIn() && (
         isAdminEmail() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['MD', 'PRINCIPAL', 'ADMIN', 'SUPER_ADMIN', 'ACADEMIC_ADMIN'])
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['MD', 'PRINCIPAL', 'ADMIN', 'SUPER_ADMIN', 'ACADEMIC_ADMIN'] &&
+         (!('status' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'INACTIVE'))
       );
+    }
+
+    function isMd() {
+      return isSignedIn() && (
+        isAdminEmail() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['MD', 'SUPER_ADMIN'])
+      );
+    }
+
+    function isEnrolledInCourse(courseId) {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+               (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.courseId == courseId) ||
+               (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.preferredCourseId == courseId) ||
+               ('enrolledCourseIds' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.enrolledCourseIds is list &&
+                courseId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.enrolledCourseIds)
+             );
     }
 
     function isMdOrPrincipal() {
@@ -50,25 +75,44 @@ service cloud.firestore {
       );
     }
 
+    function isFinanceOrAdmin() {
+      return isSignedIn() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'FINANCE')
+      );
+    }
+
     // --- Validation Blueprints ---
     function isValidUser(data) {
       return data.keys().hasAll(['id', 'name', 'email', 'role']) &&
              data.keys().hasOnly([
-               'id', 'name', 'email', 'role', 'avatarUrl', 'avatarFocus',
+               'id', 'name', 'designation', 'email', 'role', 'avatarUrl', 'avatarFocus',
                'phone', 'whatsappPhone', 'guardianName', 'guardianPhone',
                'academicBackground', 'skills', 'bio', 'status', 'createdAt', 'updatedAt',
-               'username', 'isVerified', 'whatsappOptIn', 'preferredCourseId', 'studentIds', 'guardianPin'
+               'username', 'isVerified', 'email_verified', 'emailVerifiedAt',
+               'tutorApprovalStatus', 'adminAcceptanceStatus',
+               'whatsappOptIn', 'preferredCourseId', 'courseId',
+               'enrolledCourseIds', 'studentIds', 'guardianPin', 'grantId'
              ]) &&
              data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             (!('designation' in data) || (data.designation is string && data.designation.size() <= 120)) &&
              data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
              data.role is string && data.role in ['MD', 'PRINCIPAL', 'STUDENT', 'ADMIN', 'ACADEMIC_ADMIN', 'INSTRUCTOR', 'ALUMNI', 'REVIEWER', 'FINANCE', 'COUNSELLOR', 'CAREER', 'PARENT', 'SUPER_ADMIN'] &&
              (!('username' in data) || (data.username is string && data.username.size() <= 64)) &&
              (!('isVerified' in data) || data.isVerified is bool) &&
+             (!('email_verified' in data) || data.email_verified is bool) &&
+             (!('emailVerifiedAt' in data) || (data.emailVerifiedAt is string && data.emailVerifiedAt.size() <= 64)) &&
+             (!('tutorApprovalStatus' in data) || data.tutorApprovalStatus in ['PENDING_APPROVAL', 'APPROVED', 'REJECTED']) &&
+             (!('adminAcceptanceStatus' in data) || data.adminAcceptanceStatus in ['PENDING_ACCEPTANCE', 'ACCEPTED', 'DECLINED']) &&
              (!('whatsappOptIn' in data) || data.whatsappOptIn is bool) &&
              (!('preferredCourseId' in data) || (data.preferredCourseId is string && data.preferredCourseId.size() <= 128)) &&
+             (!('courseId' in data) || (data.courseId is string && data.courseId.size() <= 128)) &&
+             (!('enrolledCourseIds' in data) || (data.enrolledCourseIds is list && data.enrolledCourseIds.size() <= 30)) &&
              (!('studentIds' in data) || (data.studentIds is list && data.studentIds.size() <= 20)) &&
              (!('guardianPin' in data) || (data.guardianPin is string && data.guardianPin.size() <= 20)) &&
+             (!('grantId' in data) || (data.grantId is string && data.grantId.size() <= 128)) &&
              (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 250000)) &&
              (!('avatarFocus' in data) || data.avatarFocus in ['center', 'top']) &&
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 64)) &&
@@ -81,6 +125,23 @@ service cloud.firestore {
              (!('status' in data) || (data.status is string && data.status.size() <= 40)) &&
              (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64)) &&
              (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    function isValidAdminGrant(data) {
+      return data.keys().hasAll(['id', 'email', 'name', 'role', 'status', 'grantedByUid', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['id', 'email', 'username', 'name', 'role', 'phone', 'status', 'grantedByUid', 'grantedByName', 'grantedByEmail', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.email is string && data.email.size() > 0 && data.email.size() <= 200 &&
+             (!('username' in data) || (data.username is string && data.username.size() <= 64)) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.role in ['ADMIN', 'ACADEMIC_ADMIN'] &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 64)) &&
+             data.status in ['ACTIVE', 'INACTIVE'] &&
+             data.grantedByUid is string && data.grantedByUid.size() > 0 && data.grantedByUid.size() <= 128 &&
+             (!('grantedByName' in data) || (data.grantedByName is string && data.grantedByName.size() <= 200)) &&
+             (!('grantedByEmail' in data) || (data.grantedByEmail is string && data.grantedByEmail.size() <= 200)) &&
+             data.createdAt is string && data.createdAt.size() <= 64 &&
+             data.updatedAt is string && data.updatedAt.size() <= 64;
     }
 
     function isValidBlog(data) {
@@ -318,7 +379,7 @@ service cloud.firestore {
                'showReviewsSection', 'showBlogSection', 'showAdmissionsSection',
                'showMediaShowcaseSection', 'mediaSectionEyebrow', 'mediaSectionTitle', 'mediaSectionSubtitle',
                'featuredVideoTitle', 'featuredVideoCaption', 'featuredVideoUrl', 'featuredVideoPosterUrl', 'posters',
-               'updatedAt', 'updatedBy'
+               'editingEnabled', 'updatedAt', 'updatedBy'
              ]) &&
              data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
              (!('faviconUrl' in data) || (data.faviconUrl is string && data.faviconUrl.size() <= 250000)) &&
@@ -374,8 +435,243 @@ service cloud.firestore {
              (!('featuredVideoUrl' in data) || (data.featuredVideoUrl is string && data.featuredVideoUrl.size() <= 600000)) &&
              (!('featuredVideoPosterUrl' in data) || (data.featuredVideoPosterUrl is string && data.featuredVideoPosterUrl.size() <= 250000)) &&
              (!('posters' in data) || (data.posters is list && data.posters.size() <= 6)) &&
+             (!('editingEnabled' in data) || data.editingEnabled is bool) &&
              data.updatedAt is string && data.updatedAt.size() <= 64 &&
              (!('updatedBy' in data) || (data.updatedBy is string && data.updatedBy.size() <= 150));
+    }
+
+    function isValidCourse(data) {
+      return data.keys().hasAll(['id', 'code', 'name', 'status']) &&
+             data.keys().hasOnly([
+               'id', 'code', 'name', 'title', 'description', 'duration', 'level',
+               'eligibility', 'fee', 'fees', 'mode', 'status', 'isPublished',
+               'thumbnailUrl', 'coordinator', 'learningObjectives', 'careerOutcomes',
+               'brochureUrl', 'category', 'categoryId', 'courseType', 'credits',
+               'prerequisites', 'maxSeats', 'enrolledCount', 'assignedTutorIds',
+               'examRequirements', 'createdAt', 'updatedAt'
+             ]) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.code is string && data.code.size() > 0 && data.code.size() <= 64 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 240 &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 240)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 5000)) &&
+             (!('duration' in data) || (data.duration is string && data.duration.size() <= 100)) &&
+             (!('level' in data) || data.level in ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'DIPLOMA', 'CERTIFICATE']) &&
+             (!('eligibility' in data) || (data.eligibility is string && data.eligibility.size() <= 500)) &&
+             (!('fee' in data) || (data.fee is number && data.fee >= 0 && data.fee <= 10000000)) &&
+             (!('fees' in data) || (data.fees is number && data.fees >= 0 && data.fees <= 10000000)) &&
+             (!('mode' in data) || data.mode in ['PHYSICAL', 'ONLINE', 'HYBRID']) &&
+             data.status in ['ACTIVE', 'ARCHIVED'] &&
+             (!('isPublished' in data) || data.isPublished is bool) &&
+             (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 2048)) &&
+             (!('coordinator' in data) || (data.coordinator is string && data.coordinator.size() <= 150)) &&
+             (!('learningObjectives' in data) || (data.learningObjectives is list && data.learningObjectives.size() <= 30)) &&
+             (!('careerOutcomes' in data) || (data.careerOutcomes is list && data.careerOutcomes.size() <= 30)) &&
+             (!('brochureUrl' in data) || (data.brochureUrl is string && data.brochureUrl.size() <= 2048)) &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 120)) &&
+             (!('categoryId' in data) || (data.categoryId is string && data.categoryId.size() <= 128)) &&
+             (!('courseType' in data) || data.courseType in ['major', 'minor']) &&
+             (!('credits' in data) || (data.credits is number && data.credits >= 0 && data.credits <= 100)) &&
+             (!('prerequisites' in data) || (data.prerequisites is list && data.prerequisites.size() <= 20)) &&
+             (!('maxSeats' in data) || (data.maxSeats is number && data.maxSeats >= 0 && data.maxSeats <= 10000)) &&
+             (!('enrolledCount' in data) || (data.enrolledCount is number && data.enrolledCount >= 0 && data.enrolledCount <= 10000)) &&
+             (!('assignedTutorIds' in data) || (data.assignedTutorIds is list && data.assignedTutorIds.size() <= 30)) &&
+             (!('examRequirements' in data) || (data.examRequirements is string && data.examRequirements.size() <= 1000)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    function isValidThemeConfig(data) {
+      return data.keys().hasAll(['id', 'mode', 'palette', 'updatedAt']) &&
+             data.keys().hasOnly(['id', 'mode', 'palette', 'sectionOverrides', 'updatedAt', 'updatedBy']) &&
+             data.id == 'theme_config' &&
+             data.mode in ['light', 'dark', 'system'] &&
+             data.palette is map &&
+             data.updatedAt is string && data.updatedAt.size() <= 64 &&
+             (!('updatedBy' in data) || (data.updatedBy is string && data.updatedBy.size() <= 200));
+    }
+
+    function isValidStudentCourseSelection(data) {
+      return data.keys().hasAll(['id', 'studentId', 'userId', 'majorCourseId', 'approvalStatus', 'updatedAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.studentId is string && data.studentId.size() > 0 && data.studentId.size() <= 128 &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.majorCourseId is string && data.majorCourseId.size() > 0 && data.majorCourseId.size() <= 128 &&
+             (!('minorCourseIds' in data) || (data.minorCourseIds is list && data.minorCourseIds.size() <= 10)) &&
+             data.approvalStatus in ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'MODIFICATION_REQUIRED'] &&
+             data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidTutorProgressReport(data) {
+      return data.keys().hasAll(['id', 'studentId', 'courseId', 'tutorId', 'progressPercent', 'status', 'submittedAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.studentId is string && data.studentId.size() > 0 && data.studentId.size() <= 128 &&
+             data.courseId is string && data.courseId.size() > 0 && data.courseId.size() <= 128 &&
+             data.tutorId is string && data.tutorId.size() > 0 && data.tutorId.size() <= 128 &&
+             data.progressPercent is number && data.progressPercent >= 0 && data.progressPercent <= 100 &&
+             data.status in ['ON_TRACK', 'NEEDS_SUPPORT', 'COMPLETED'] &&
+             data.submittedAt is string && data.submittedAt.size() <= 64;
+    }
+
+    function isValidCoursePaper(data) {
+      return data.keys().hasAll([
+               'id', 'courseId', 'semester', 'subject', 'module', 'title',
+               'category', 'fileUrl', 'storagePath', 'fileName', 'fileSize',
+               'fileType', 'isPublished', 'uploadedById', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'id', 'courseId', 'courseCode', 'courseName', 'semester', 'subject', 'module',
+               'title', 'description', 'category', 'fileUrl', 'storagePath', 'fileName',
+               'fileSize', 'fileType', 'isPublished', 'publishedAt', 'uploadedById',
+               'uploadedByName', 'createdAt', 'updatedAt'
+             ]) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.courseId is string && data.courseId.size() > 0 && data.courseId.size() <= 128 &&
+             (!('courseCode' in data) || (data.courseCode is string && data.courseCode.size() <= 64)) &&
+             (!('courseName' in data) || (data.courseName is string && data.courseName.size() <= 240)) &&
+             data.semester is string && data.semester.size() > 0 && data.semester.size() <= 100 &&
+             data.subject is string && data.subject.size() > 0 && data.subject.size() <= 160 &&
+             data.module is string && data.module.size() > 0 && data.module.size() <= 160 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 240 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             data.category in [
+               'Study Materials',
+               'Course Notes',
+               'Examination Question Papers',
+               'Previous Year Question Papers',
+               'Assignments',
+               'Practical Records',
+               'Reference Materials'
+             ] &&
+             data.fileUrl is string && data.fileUrl.size() > 0 && data.fileUrl.size() <= 4096 &&
+             data.storagePath is string && data.storagePath.size() > 0 && data.storagePath.size() <= 512 &&
+             data.fileName is string && data.fileName.size() > 0 && data.fileName.size() <= 260 &&
+             data.fileSize is number && data.fileSize > 0 && data.fileSize <= 26214400 &&
+             data.fileType == 'application/pdf' &&
+             data.isPublished is bool &&
+             (!('publishedAt' in data) || (data.publishedAt is string && data.publishedAt.size() <= 64)) &&
+             data.uploadedById is string && data.uploadedById.size() > 0 && data.uploadedById.size() <= 128 &&
+             (!('uploadedByName' in data) || (data.uploadedByName is string && data.uploadedByName.size() <= 150)) &&
+             data.createdAt is string && data.createdAt.size() <= 64 &&
+             data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidAttendanceQrSession(data) {
+      return data.keys().hasAll(['id', 'token', 'classId', 'courseId', 'date', 'hour', 'instructorId', 'active', 'expiresAt', 'createdAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.token is string && data.token.size() > 0 && data.token.size() <= 64 &&
+             data.classId is string && data.classId.size() > 0 && data.classId.size() <= 128 &&
+             data.courseId is string && data.courseId.size() > 0 && data.courseId.size() <= 128 &&
+             (!('courseName' in data) || (data.courseName is string && data.courseName.size() <= 200)) &&
+             (!('subjectName' in data) || (data.subjectName is string && data.subjectName.size() <= 200)) &&
+             data.date is string && data.date.size() > 0 && data.date.size() <= 32 &&
+             data.hour is int && data.hour >= 1 && data.hour <= 8 &&
+             data.instructorId is string && data.instructorId.size() > 0 && data.instructorId.size() <= 128 &&
+             (!('instructorName' in data) || (data.instructorName is string && data.instructorName.size() <= 150)) &&
+             data.active is bool &&
+             data.expiresAt is string && data.expiresAt.size() <= 64 &&
+             data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidAttendanceCheckIn(data) {
+      return data.keys().hasAll(['id', 'sessionId', 'token', 'classId', 'date', 'hour', 'studentId', 'studentName', 'userId', 'status', 'checkedInAt']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.sessionId is string && data.sessionId.size() > 0 && data.sessionId.size() <= 128 &&
+             data.token is string && data.token.size() > 0 && data.token.size() <= 64 &&
+             data.classId is string && data.classId.size() > 0 && data.classId.size() <= 128 &&
+             (!('courseId' in data) || (data.courseId is string && data.courseId.size() <= 128)) &&
+             data.date is string && data.date.size() > 0 && data.date.size() <= 32 &&
+             data.hour is int && data.hour >= 1 && data.hour <= 8 &&
+             data.studentId is string && data.studentId.size() > 0 && data.studentId.size() <= 128 &&
+             data.studentName is string && data.studentName.size() > 0 && data.studentName.size() <= 150 &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+             data.status in ['PRESENT', 'LATE'] &&
+             data.checkedInAt is string && data.checkedInAt.size() <= 64;
+    }
+
+    function isValidClassSession(data) {
+      return data.keys().hasAll(['id', 'title', 'courseId', 'batchId', 'date', 'startTime', 'endTime', 'type', 'isActive', 'createdById', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'id', 'title', 'courseId', 'courseCode', 'courseName',
+               'batchId', 'batchName', 'subjectId', 'subjectName',
+               'instructorId', 'instructorName', 'date', 'startTime', 'endTime',
+               'room', 'type', 'meetingLink', 'googleMeetUrl',
+               'whatsappGroupUrl', 'whatsappGroupName', 'facultyWhatsapp',
+               'notes', 'isActive', 'createdById', 'createdAt', 'updatedAt'
+             ]) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 240 &&
+             data.courseId is string && data.courseId.size() > 0 && data.courseId.size() <= 128 &&
+             (!('courseCode' in data) || (data.courseCode is string && data.courseCode.size() <= 64)) &&
+             (!('courseName' in data) || (data.courseName is string && data.courseName.size() <= 240)) &&
+             data.batchId is string && data.batchId.size() > 0 && data.batchId.size() <= 128 &&
+             (!('batchName' in data) || (data.batchName is string && data.batchName.size() <= 160)) &&
+             (!('subjectId' in data) || (data.subjectId is string && data.subjectId.size() <= 128)) &&
+             (!('subjectName' in data) || (data.subjectName is string && data.subjectName.size() <= 200)) &&
+             (!('instructorId' in data) || (data.instructorId is string && data.instructorId.size() <= 128)) &&
+             (!('instructorName' in data) || (data.instructorName is string && data.instructorName.size() <= 150)) &&
+             data.date is string && data.date.size() > 0 && data.date.size() <= 32 &&
+             data.startTime is string && data.startTime.size() > 0 && data.startTime.size() <= 32 &&
+             data.endTime is string && data.endTime.size() > 0 && data.endTime.size() <= 32 &&
+             (!('room' in data) || (data.room is string && data.room.size() <= 160)) &&
+             data.type in ['ONLINE', 'HYBRID', 'PHYSICAL', 'WORKSHOP', 'LAB', 'HACKATHON'] &&
+             (!('meetingLink' in data) || (data.meetingLink is string && data.meetingLink.size() <= 512 && (data.meetingLink == '' || data.meetingLink.matches('^https://.*')))) &&
+             (!('googleMeetUrl' in data) || (data.googleMeetUrl is string && data.googleMeetUrl.size() <= 512 && (data.googleMeetUrl == '' || data.googleMeetUrl.matches('^https://.*')))) &&
+             (!('whatsappGroupUrl' in data) || (data.whatsappGroupUrl is string && data.whatsappGroupUrl.size() <= 512 && (data.whatsappGroupUrl == '' || data.whatsappGroupUrl.matches('^https://.*')))) &&
+             (!('whatsappGroupName' in data) || (data.whatsappGroupName is string && data.whatsappGroupName.size() <= 160)) &&
+             (!('facultyWhatsapp' in data) || (data.facultyWhatsapp is string && data.facultyWhatsapp.size() <= 160)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 2000)) &&
+             data.isActive is bool &&
+             data.createdById is string && data.createdById.size() > 0 && data.createdById.size() <= 128 &&
+             data.createdAt is string && data.createdAt.size() <= 64 &&
+             data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidFeePayment(data) {
+      return data.keys().hasAll(['id', 'invoiceNumber', 'invoiceId', 'studentId', 'userId', 'studentName', 'courseId', 'amount', 'currency', 'paymentMethod', 'upiIdPaidTo', 'status', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'id', 'invoiceNumber', 'invoiceId', 'studentId', 'userId', 'studentName', 'studentEmail',
+               'courseId', 'courseName', 'amount', 'currency', 'paymentMethod', 'upiIdPaidTo',
+               'utrNumber', 'upiAppName', 'gatewayOrderId', 'gatewayPaymentId', 'gatewaySignatureVerified',
+               'proofNote', 'status', 'receiptNumber', 'verifiedBy', 'verifiedById', 'verifiedAt',
+               'rejectionReason', 'createdAt', 'updatedAt'
+             ]) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             data.invoiceNumber is string && data.invoiceNumber.size() > 0 && data.invoiceNumber.size() <= 64 &&
+             data.amount is number && data.amount > 0 && data.amount <= 10000000 &&
+             data.currency == 'INR' &&
+             data.paymentMethod in ['GPAY_UPI', 'UPI_QR', 'UPI_INTENT', 'RAZORPAY_UPI', 'BANK_TRANSFER'] &&
+             data.status in ['AWAITING_PAYMENT', 'PENDING_VERIFICATION', 'VERIFIED', 'REJECTED'];
+    }
+
+    function isValidGoogleMeetMeeting(data) {
+      return data.keys().hasAll(['id', 'title', 'courseId', 'startTime', 'endTime', 'meetLink', 'organizerEmail', 'status', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'id', 'calendarEventId', 'title', 'description', 'courseId', 'courseName',
+               'batchId', 'batchName', 'instructorId', 'instructorName', 'instructorEmail',
+               'startTime', 'endTime', 'meetLink', 'organizerEmail', 'organizerName',
+               'attendeeEmails', 'status', 'createdAt', 'updatedAt'
+             ]) &&
+             data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+             (!('calendarEventId' in data) || (data.calendarEventId is string && data.calendarEventId.size() <= 200)) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 240 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 4000)) &&
+             data.courseId is string && data.courseId.size() > 0 && data.courseId.size() <= 128 &&
+             (!('courseName' in data) || (data.courseName is string && data.courseName.size() <= 240)) &&
+             (!('batchId' in data) || (data.batchId is string && data.batchId.size() <= 128)) &&
+             (!('batchName' in data) || (data.batchName is string && data.batchName.size() <= 160)) &&
+             (!('instructorId' in data) || (data.instructorId is string && data.instructorId.size() <= 128)) &&
+             (!('instructorName' in data) || (data.instructorName is string && data.instructorName.size() <= 150)) &&
+             (!('instructorEmail' in data) || (data.instructorEmail is string && data.instructorEmail.size() <= 200)) &&
+             data.startTime is string && data.startTime.size() > 0 && data.startTime.size() <= 64 &&
+             data.endTime is string && data.endTime.size() > 0 && data.endTime.size() <= 64 &&
+             data.meetLink is string && data.meetLink.size() > 0 && data.meetLink.size() <= 512 && data.meetLink.matches('^https://.*') &&
+             data.organizerEmail is string && data.organizerEmail.size() > 0 && data.organizerEmail.size() <= 200 &&
+             (!('organizerName' in data) || (data.organizerName is string && data.organizerName.size() <= 150)) &&
+             (!('attendeeEmails' in data) || (data.attendeeEmails is list && data.attendeeEmails.size() <= 200)) &&
+             data.status in ['SCHEDULED', 'RESCHEDULED', 'CANCELLED'] &&
+             data.createdAt is string && data.createdAt.size() <= 64 &&
+             data.updatedAt is string && data.updatedAt.size() <= 64;
     }
 
     // --- Global Safety Net ---
@@ -386,14 +682,39 @@ service cloud.firestore {
     // --- Collections ---
 
     match /users/{userId} {
-      allow read: if isSignedIn();
-      allow create: if isValidId(userId) && (isOwner(userId) || isAdmin()) && isValidUser(incoming()) && (
-        isAdmin() || (incoming().id == request.auth.uid && incoming().role == 'STUDENT')
+      allow get: if isValidId(userId) && isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isSignedIn() && (isAdmin() || resource.data.id == request.auth.uid);
+      allow create: if isValidId(userId) && isSignedIn() && isValidUser(incoming()) && (
+        isMd() ||
+        (isOwner(userId) && incoming().role in ['STUDENT', 'INSTRUCTOR', 'ALUMNI', 'PARENT']) ||
+        (isOwner(userId) && isVerified() && ('email' in request.auth.token) && request.auth.token.email is string &&
+          incoming().role in ['ADMIN', 'ACADEMIC_ADMIN'] &&
+          'grantId' in incoming() && isValidId(incoming().grantId) &&
+          exists(/databases/$(database)/documents/admin_grants/$(incoming().grantId)) &&
+          get(/databases/$(database)/documents/admin_grants/$(incoming().grantId)).data.email == request.auth.token.email.lower() &&
+          get(/databases/$(database)/documents/admin_grants/$(incoming().grantId)).data.status == 'ACTIVE' &&
+          get(/databases/$(database)/documents/admin_grants/$(incoming().grantId)).data.role == incoming().role)
       );
-      allow update: if isValidId(userId) && (isOwner(userId) || isAdmin()) && isValidUser(incoming()) && (
-        // Prevent role/id escalation by self
-        (isOwner(userId) && incoming().role == existing().role && incoming().id == existing().id) || isAdmin()
+      allow update: if isValidId(userId) && isSignedIn() && isValidUser(incoming()) && (
+        isMd() ||
+        (isOwner(userId) && incoming().role == existing().role && incoming().id == existing().id) ||
+        (isOwner(userId) && isVerified() && ('email' in request.auth.token) && request.auth.token.email is string &&
+          incoming().role in ['ADMIN', 'ACADEMIC_ADMIN'] &&
+          'grantId' in incoming() && isValidId(incoming().grantId) &&
+          exists(/databases/$(database)/documents/admin_grants/$(incoming().grantId)) &&
+          get(/databases/$(database)/documents/admin_grants/$(incoming().grantId)).data.email == request.auth.token.email.lower() &&
+          get(/databases/$(database)/documents/admin_grants/$(incoming().grantId)).data.status == 'ACTIVE' &&
+          get(/databases/$(database)/documents/admin_grants/$(incoming().grantId)).data.role == incoming().role)
       );
+      allow delete: if isValidId(userId) && isMd() && userId != request.auth.uid;
+    }
+
+    match /admin_grants/{grantId} {
+      allow get: if isValidId(grantId) && isSignedIn() && (isMd() || (isVerified() && ('email' in request.auth.token) && request.auth.token.email is string && resource.data.email == request.auth.token.email.lower()));
+      allow list: if isSignedIn() && (isMd() || (isVerified() && ('email' in request.auth.token) && request.auth.token.email is string && resource.data.email == request.auth.token.email.lower() && resource.data.status == 'ACTIVE'));
+      allow create: if isValidId(grantId) && isMd() && isValidAdminGrant(incoming()) && incoming().grantedByUid == request.auth.uid;
+      allow update: if isValidId(grantId) && isMd() && isValidAdminGrant(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(grantId) && isMd();
     }
 
     match /blogs/{blogId} {
@@ -416,8 +737,27 @@ service cloud.firestore {
     }
 
     match /courses/{courseId} {
-      allow read: if true;
-      allow write: if true;
+      allow get: if isValidId(courseId) && (resource.data.status == 'ACTIVE' || resource.data.isPublished == true || isAdmin());
+      allow list: if resource.data.status == 'ACTIVE' || isAdmin();
+      allow create, update: if isAdmin() && isValidId(courseId) && isValidCourse(incoming());
+      allow delete: if isAdmin() && isValidId(courseId);
+    }
+
+    match /course_papers/{paperId} {
+      allow get: if isValidId(paperId) && (
+        isAdmin() ||
+        (isSignedIn() && resource.data.isPublished == true && isEnrolledInCourse(resource.data.courseId))
+      );
+      allow list: if isAdmin() || (
+        isSignedIn() && resource.data.isPublished == true && isEnrolledInCourse(resource.data.courseId)
+      );
+      allow create: if isAdmin() && isValidId(paperId) && isValidCoursePaper(incoming()) && incoming().uploadedById == request.auth.uid;
+      allow update: if isAdmin() && isValidId(paperId) && isValidCoursePaper(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin() && isValidId(paperId);
+    }
+
+    match /test/{docId} {
+      allow get: if docId == 'connection';
     }
 
     match /registrations/{id} {
@@ -527,8 +867,121 @@ service cloud.firestore {
 
     match /site_settings/{settingId} {
       allow get, list: if true;
-      allow create, update: if isAdmin() && isValidId(settingId) && isValidFrontPageConfig(incoming());
+      allow create, update: if isAdmin() && isValidId(settingId) && (
+        (settingId == 'theme_config' && isValidThemeConfig(incoming())) ||
+        (settingId != 'theme_config' && isValidFrontPageConfig(incoming()))
+      );
       allow delete: if isAdmin() && isValidId(settingId);
+    }
+
+    match /attendance_qr_sessions/{sessionId} {
+      allow get, list: if isSignedIn();
+      allow create: if isValidId(sessionId) && isInstructorOrAdmin() && isValidAttendanceQrSession(incoming());
+      allow update: if isValidId(sessionId) && isInstructorOrAdmin() && isValidAttendanceQrSession(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(sessionId) && isInstructorOrAdmin();
+    }
+
+    match /attendance_checkins/{checkinId} {
+      allow get: if isValidId(checkinId) && isSignedIn() && (isInstructorOrAdmin() || resource.data.userId == request.auth.uid);
+      allow list: if isSignedIn() && (isInstructorOrAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isValidId(checkinId) && isSignedIn() && isValidAttendanceCheckIn(incoming()) && (
+        isInstructorOrAdmin() || incoming().userId == request.auth.uid
+      );
+      allow update, delete: if isValidId(checkinId) && isInstructorOrAdmin();
+    }
+
+    match /class_sessions/{sessionId} {
+      allow get: if isValidId(sessionId) && isSignedIn() && (resource.data.isActive == true || isInstructorOrAdmin());
+      allow list: if isSignedIn() && (resource.data.isActive == true || isInstructorOrAdmin());
+      allow create: if isValidId(sessionId) && isInstructorOrAdmin() && isValidClassSession(incoming()) && incoming().createdById == request.auth.uid;
+      allow update: if isValidId(sessionId) && isInstructorOrAdmin() && isValidClassSession(incoming()) && incoming().createdById == existing().createdById && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(sessionId) && isInstructorOrAdmin();
+    }
+
+    match /fee_payments/{txId} {
+      allow get: if isValidId(txId) && isSignedIn() && (isFinanceOrAdmin() || resource.data.userId == request.auth.uid);
+      allow list: if isSignedIn() && (isFinanceOrAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isValidId(txId) && isSignedIn() && isValidFeePayment(incoming()) && (
+        isFinanceOrAdmin() ||
+        (incoming().userId == request.auth.uid && incoming().status == 'AWAITING_PAYMENT' && !('receiptNumber' in incoming()) && !('verifiedBy' in incoming()))
+      );
+      allow update: if isValidId(txId) && isSignedIn() && isValidFeePayment(incoming()) && (
+        isFinanceOrAdmin() ||
+        (existing().userId == request.auth.uid &&
+         existing().status != 'VERIFIED' &&
+         incoming().userId == existing().userId &&
+         incoming().amount == existing().amount &&
+         incoming().invoiceNumber == existing().invoiceNumber &&
+         incoming().status == 'PENDING_VERIFICATION' &&
+         !('receiptNumber' in incoming()) &&
+         !('verifiedBy' in incoming()))
+      );
+      allow delete: if isValidId(txId) && isFinanceOrAdmin();
+    }
+
+    match /google_meet_meetings/{meetingId} {
+      allow get: if isValidId(meetingId) && isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isValidId(meetingId) && isInstructorOrAdmin() && isValidGoogleMeetMeeting(incoming());
+      allow update: if isValidId(meetingId) && isInstructorOrAdmin() && isValidGoogleMeetMeeting(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(meetingId) && isInstructorOrAdmin();
+    }
+
+    match /course_categories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() && isValidId(categoryId);
+    }
+
+    match /course_modules/{moduleId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() && isValidId(moduleId);
+    }
+
+    match /course_credits/{creditId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() && isValidId(creditId);
+    }
+
+    match /tutor_course_allocations/{allocationId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin() && isValidId(allocationId);
+    }
+
+    match /student_course_selections/{selectionId} {
+      allow get: if isValidId(selectionId) && isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid || isInstructor());
+      allow list: if isSignedIn() && (isAdmin() || isInstructor() || resource.data.userId == request.auth.uid);
+      allow create: if isValidId(selectionId) && isSignedIn() && isValidStudentCourseSelection(incoming()) && (
+        isAdmin() || (incoming().userId == request.auth.uid && incoming().approvalStatus in ['DRAFT', 'SUBMITTED'])
+      );
+      allow update: if isValidId(selectionId) && isSignedIn() && isValidStudentCourseSelection(incoming()) && (
+        isAdmin() || (
+          existing().userId == request.auth.uid &&
+          existing().approvalStatus != 'APPROVED' &&
+          incoming().userId == existing().userId &&
+          incoming().approvalStatus in ['DRAFT', 'SUBMITTED']
+        )
+      );
+      allow delete: if isAdmin() && isValidId(selectionId);
+    }
+
+    match /course_enrollments/{enrollmentId} {
+      allow get: if isValidId(enrollmentId) && isSignedIn() && (isAdmin() || isInstructor() || resource.data.studentId == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || isInstructor() || resource.data.studentId == request.auth.uid);
+      allow create, update, delete: if isAdmin() && isValidId(enrollmentId);
+    }
+
+    match /course_approval_logs/{logId} {
+      allow get, list: if isSignedIn() && (isAdmin() || resource.data.actorId == request.auth.uid || resource.data.studentId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(logId) && (isAdmin() || request.resource.data.actorId == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    match /tutor_progress_reports/{reportId} {
+      allow get: if isValidId(reportId) && isSignedIn() && (isInstructorOrAdmin() || resource.data.studentId == request.auth.uid);
+      allow list: if isSignedIn() && (isInstructorOrAdmin() || resource.data.studentId == request.auth.uid);
+      allow create: if isValidId(reportId) && isSignedIn() && isInstructorOrAdmin() && isValidTutorProgressReport(incoming());
+      allow update: if isValidId(reportId) && isSignedIn() && isInstructorOrAdmin() && isValidTutorProgressReport(incoming()) && (isAdmin() || existing().tutorId == request.auth.uid);
+      allow delete: if isAdmin() && isValidId(reportId);
     }
   }
 }

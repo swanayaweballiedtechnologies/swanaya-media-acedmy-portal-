@@ -22,7 +22,11 @@ import {
   AlertCircle,
   Upload,
   Image as ImageIcon,
-  Film
+  Film,
+  Lock,
+  Unlock,
+  MessageCircle,
+  Palette
 } from 'lucide-react';
 import {
   SwanayaDatabase,
@@ -40,11 +44,12 @@ import {
   processPosterUploadFile,
   readSmallVideoFileAsDataUrl
 } from '../utils/mediaHelpers';
+import AdminThemeConsole from './AdminThemeConsole';
 
 interface SettingsAuditPortalProps {
   currentUser: any;
   onRefreshAllData: () => void;
-  initialTab?: 'front-page' | 'academy' | 'audits';
+  initialTab?: 'front-page' | 'theme' | 'academy' | 'audits';
   onPreviewLanding?: () => void;
 }
 
@@ -81,6 +86,10 @@ function mergeFrontPageConfig(partial?: Partial<FrontPageConfig> | null): FrontP
       typeof safe.showMediaShowcaseSection === 'boolean'
         ? safe.showMediaShowcaseSection
         : INITIAL_FRONT_PAGE_CONFIG.showMediaShowcaseSection,
+    editingEnabled:
+      typeof safe.editingEnabled === 'boolean'
+        ? safe.editingEnabled
+        : INITIAL_FRONT_PAGE_CONFIG.editingEnabled ?? true,
   };
 }
 
@@ -90,7 +99,7 @@ export default function SettingsAuditPortal({
   initialTab = 'front-page',
   onPreviewLanding,
 }: SettingsAuditPortalProps) {
-  const [activeTab, setActiveTab] = useState<'front-page' | 'academy' | 'audits'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'front-page' | 'theme' | 'academy' | 'audits'>(initialTab);
   const [settings, setSettings] = useState<AcademySettings>(() => SwanayaDatabase.get<AcademySettings>('settings'));
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => SwanayaDatabase.get<AuditLog[]>('auditLogs'));
   const [saved, setSaved] = useState(false);
@@ -136,16 +145,89 @@ export default function SettingsAuditPortal({
     };
   }, []);
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const isFrontPageEditable = frontPageForm.editingEnabled !== false;
+  const isAcademyConfigEditable = form.configEditingEnabled !== false;
+
+  const handleToggleFrontPageEditMode = async () => {
+    const nextEnabled = !isFrontPageEditable;
+    const nextConfig: FrontPageConfig = {
+      ...frontPageForm,
+      id: 'front_page',
+      editingEnabled: nextEnabled,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.name || currentUser?.email || 'MD / Admin',
+    };
+
+    setFrontPageForm(nextConfig);
+    SwanayaDatabase.set('frontPageConfig', nextConfig);
+    setConfirmFrontReset(false);
+
+    let syncedCloud = false;
+    if (auth.currentUser) {
+      try {
+        await academyService.saveFrontPageConfig(nextConfig);
+        syncedCloud = true;
+      } catch {
+        // Keep local toggle state if cloud write requires Firebase Admin token
+      }
+    }
+
+    SwanayaDatabase.log(
+      currentUser?.email || 'md@swanayamedia.com',
+      currentUser?.name || 'Managing Director',
+      'FRONT_PAGE_EDIT_MODE',
+      `Turned ${nextEnabled ? 'ON' : 'OFF'} Front Page Edit Mode (${syncedCloud ? 'Local + Cloud' : 'Local'})`
+    );
+    setAuditLogs(SwanayaDatabase.get<AuditLog[]>('auditLogs'));
+    onRefreshAllData();
+
+    setFrontPageNotice({
+      type: nextEnabled ? 'success' : 'info',
+      text: nextEnabled
+        ? 'Edit Mode is now ON. Front Page sections are unlocked and editable.'
+        : 'Edit Mode has been turned OFF. Front Page Editor is now locked in Read-Only mode.',
+    });
+  };
+
+  const handleToggleAcademyConfigEditMode = () => {
+    const nextEnabled = !isAcademyConfigEditable;
+    const nextSettings: AcademySettings = {
+      ...form,
+      configEditingEnabled: nextEnabled,
+    };
+
+    setForm(nextSettings);
+    setSettings(nextSettings);
+    SwanayaDatabase.set('settings', nextSettings);
+
+    SwanayaDatabase.log(
+      currentUser?.email || 'md@swanayamedia.com',
+      currentUser?.name || 'Managing Director',
+      'SETTINGS_EDIT_MODE',
+      `Turned ${nextEnabled ? 'ON' : 'OFF'} Academy Configuration Edit Mode`
+    );
+    setAuditLogs(SwanayaDatabase.get<AuditLog[]>('auditLogs'));
+    onRefreshAllData();
+  };
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    SwanayaDatabase.set('settings', form);
-    setSettings(form);
+    if (!isAcademyConfigEditable) return;
+    const syncedContactPhone = (form.phone || form.adminWhatsAppPhone || '+91 94460 55555').trim();
+    const updatedSettings: AcademySettings = {
+      ...form,
+      phone: syncedContactPhone,
+      adminWhatsAppPhone: form.adminWhatsAppPhone?.trim() || syncedContactPhone,
+    };
+    SwanayaDatabase.set('settings', updatedSettings);
+    setSettings(updatedSettings);
+    setForm(updatedSettings);
 
     SwanayaDatabase.log(
       currentUser?.email || 'md@swanayamedia.com',
       currentUser?.name || 'Managing Director',
       'SETTINGS_SAVED',
-      'Modified Academy Configuration'
+      `Modified Academy Configuration (${syncedContactPhone})`
     );
     setAuditLogs(SwanayaDatabase.get<AuditLog[]>('auditLogs'));
 
@@ -171,6 +253,13 @@ export default function SettingsAuditPortal({
 
   const handleSaveFrontPage = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isFrontPageEditable) {
+      setFrontPageNotice({
+        type: 'info',
+        text: 'Edit Mode is turned OFF. Enable Edit Mode first to save or publish changes.',
+      });
+      return;
+    }
     setFrontPageNotice(null);
     setSavingFrontPage(true);
 
@@ -350,6 +439,19 @@ export default function SettingsAuditPortal({
 
           <button
             type="button"
+            onClick={() => setActiveTab('theme')}
+            className={`px-3.5 py-2 rounded text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+              activeTab === 'theme'
+                ? 'bg-[var(--sma-primary)] text-white'
+                : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-white'
+            }`}
+          >
+            <Palette className="w-3.5 h-3.5" />
+            Theme &amp; Colours
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('academy')}
             className={`px-3.5 py-2 rounded text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
               activeTab === 'academy'
@@ -387,27 +489,76 @@ export default function SettingsAuditPortal({
         </div>
       </div>
 
+      {/* TAB: THEME & COLOUR MANAGEMENT */}
+      {activeTab === 'theme' && (
+        <AdminThemeConsole currentUser={currentUser} onThemeSaved={onRefreshAllData} />
+      )}
+
       {/* TAB 1: FRONT PAGE EDITOR */}
       {activeTab === 'front-page' && (
         <form onSubmit={handleSaveFrontPage} className="space-y-6">
           {/* Sticky Action Strip */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-0.5">
-              <p className="text-xs font-semibold text-slate-200 flex items-center gap-2">
-                <Layout className="w-4 h-4 text-amber-400" />
-                Live Public Website Copy & Layout Controls
-              </p>
+          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold text-slate-200 flex items-center gap-2">
+                  <Layout className="w-4 h-4 text-amber-400" />
+                  Live Public Website Copy &amp; Layout Controls
+                </p>
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider border ${
+                    isFrontPageEditable
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  }`}
+                >
+                  {isFrontPageEditable ? (
+                    <>
+                      <Unlock className="w-3 h-3" />
+                      Edit Mode: ON (Editable)
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3 h-3" />
+                      Edit Mode: OFF (Read-Only)
+                    </>
+                  )}
+                </span>
+              </div>
               <p className="text-[11px] font-mono text-slate-500">
                 Last updated: {String(frontPageForm.updatedAt || '').slice(0, 19).replace('T', ' ')} · By {frontPageForm.updatedBy || 'System Default'}
               </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleToggleFrontPageEditMode}
+                className={`px-3.5 py-2 rounded text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer border transition-colors ${
+                  isFrontPageEditable
+                    ? 'bg-rose-500/15 border-rose-500/40 text-rose-200 hover:bg-rose-500/25'
+                    : 'bg-emerald-500 border-emerald-400 text-black hover:bg-emerald-400'
+                }`}
+              >
+                {isFrontPageEditable ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5" />
+                    Turn Off Edit Mode
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-3.5 h-3.5" />
+                    Turn On Edit Mode
+                  </>
+                )}
+              </button>
+
               {!confirmFrontReset ? (
                 <button
                   type="button"
+                  disabled={!isFrontPageEditable}
                   onClick={() => setConfirmFrontReset(true)}
-                  className="px-3.5 py-2 bg-slate-950 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="px-3.5 py-2 bg-slate-950 border border-slate-700 hover:border-slate-500 text-slate-300 hover:text-white text-xs font-semibold uppercase tracking-wider rounded flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   Reset Defaults
@@ -434,14 +585,32 @@ export default function SettingsAuditPortal({
 
               <button
                 type="submit"
-                disabled={savingFrontPage}
-                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                disabled={savingFrontPage || !isFrontPageEditable}
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider rounded flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
                 {savingFrontPage ? 'Publishing...' : 'Save & Publish Front Page'}
               </button>
             </div>
           </div>
+
+          {!isFrontPageEditable && (
+            <div className="p-3.5 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Lock className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>
+                  Front Page Edit Mode is currently <strong>OFF (Read-Only Lock)</strong>. Fields below are protected from accidental edits.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleFrontPageEditMode}
+                className="px-3 py-1.5 rounded bg-emerald-500 hover:bg-emerald-400 text-black text-[11px] font-bold uppercase tracking-wider whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                Turn On Edit Mode
+              </button>
+            </div>
+          )}
 
           {frontPageNotice && (
             <div
@@ -462,6 +631,10 @@ export default function SettingsAuditPortal({
             </div>
           )}
 
+          <fieldset
+            disabled={!isFrontPageEditable}
+            className={!isFrontPageEditable ? 'space-y-6 opacity-60 pointer-events-none select-none' : 'space-y-6'}
+          >
           {/* Section Visibility Toggles */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
             <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono border-b border-slate-800 pb-2">
@@ -1532,6 +1705,7 @@ export default function SettingsAuditPortal({
               </div>
             </div>
           </div>
+          </fieldset>
         </form>
       )}
 
@@ -1539,19 +1713,67 @@ export default function SettingsAuditPortal({
       {activeTab === 'academy' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center gap-1">
-                <Settings className="w-4 h-4 text-amber-500" />
-                Syllabus & Academy Rules
-              </h3>
-              {saved && (
-                <span className="text-xs text-emerald-400 font-bold flex items-center gap-1 animate-pulse">
-                  <Check className="w-4 h-4" /> Config Saved
+            <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center gap-1">
+                  <Settings className="w-4 h-4 text-amber-500" />
+                  Syllabus &amp; Academy Rules
+                </h3>
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider border ${
+                    isAcademyConfigEditable
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                  }`}
+                >
+                  {isAcademyConfigEditable ? 'Edit Mode: ON' : 'Edit Mode: OFF'}
                 </span>
-              )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {saved && (
+                  <span className="text-xs text-emerald-400 font-bold flex items-center gap-1 animate-pulse">
+                    <Check className="w-4 h-4" /> Config Saved
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleToggleAcademyConfigEditMode}
+                  className={`px-3 py-1.5 rounded text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer border transition-colors ${
+                    isAcademyConfigEditable
+                      ? 'bg-rose-500/15 border-rose-500/40 text-rose-200 hover:bg-rose-500/25'
+                      : 'bg-emerald-500 border-emerald-400 text-black hover:bg-emerald-400'
+                  }`}
+                >
+                  {isAcademyConfigEditable ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5" />
+                      Turn Off Edit Mode
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="w-3.5 h-3.5" />
+                      Turn On Edit Mode
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
+            {!isAcademyConfigEditable && (
+              <div className="p-3 rounded-lg border bg-rose-500/10 border-rose-500/30 text-rose-200 text-xs flex items-center gap-2">
+                <Lock className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>
+                  Academy Configuration Edit Mode is <strong>OFF</strong>. Click &ldquo;Turn On Edit Mode&rdquo; to update institution or UPI settings.
+                </span>
+              </div>
+            )}
+
             <form onSubmit={handleSaveSettings} className="space-y-4">
+              <fieldset
+                disabled={!isAcademyConfigEditable}
+                className={!isAcademyConfigEditable ? 'space-y-4 opacity-60 pointer-events-none select-none' : 'space-y-4'}
+              >
               <div className="space-y-1">
                 <label className="text-[10px] text-slate-500 uppercase font-bold">Academy Name</label>
                 <input
@@ -1587,20 +1809,22 @@ export default function SettingsAuditPortal({
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] text-emerald-400 uppercase font-bold flex items-center gap-1">
-                  <span>Admin WhatsApp Access Phone</span>
+                <label className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1.5">
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Support WhatsApp Number</span>
                 </label>
                 <input
                   type="text"
-                  required
-                  value={form.adminWhatsAppPhone || '+91 94460 12345'}
-                  onChange={(e) => setForm({ ...form, adminWhatsAppPhone: e.target.value })}
-                  placeholder="+91 94460 12345"
-                  className="w-full bg-slate-950 border border-emerald-500/30 rounded px-3 py-2 text-xs text-emerald-300 font-mono focus:border-emerald-400 focus:outline-none"
+                  value={form.adminWhatsAppPhone || form.phone || ''}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      adminWhatsAppPhone: e.target.value,
+                    })
+                  }
+                  placeholder="+91 94460 55555"
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-100 font-mono"
                 />
-                <p className="text-[9px] text-slate-500 font-mono">
-                  Direct WhatsApp contact number displayed across student registration and portal help desks.
-                </p>
               </div>
 
               <div className="space-y-1">
@@ -1658,9 +1882,50 @@ export default function SettingsAuditPortal({
                 </div>
               </div>
 
+              <div className="p-3.5 bg-emerald-500/5 border border-emerald-500/20 rounded-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400">
+                    Verified Academy UPI Fee Collection Account
+                  </span>
+                  <span className="text-[9px] font-mono text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded">
+                    GPay / UPI Ready
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-bold">Academy UPI ID (VPA)</label>
+                    <input
+                      type="text"
+                      required
+                      value={form.upiId || 'swanayamedia@okaxis'}
+                      onChange={(e) => setForm({ ...form, upiId: e.target.value.trim() })}
+                      placeholder="swanayamedia@okaxis"
+                      className="w-full bg-slate-950 border border-emerald-500/30 rounded px-3 py-2 text-xs text-emerald-300 font-mono focus:border-emerald-400 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 uppercase font-bold">Verified Payee Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={form.upiPayeeName || 'Swanaya Media Academy'}
+                      onChange={(e) => setForm({ ...form, upiPayeeName: e.target.value })}
+                      placeholder="Swanaya Media Academy"
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-100"
+                    />
+                  </div>
+                </div>
+                <p className="text-[9px] text-slate-500 font-mono">
+                  Only this academy-owned UPI account is used for student Google Pay &amp; UPI QR fee payments. No UPI PINs are ever collected.
+                </p>
+              </div>
+
+              </fieldset>
+
               <button
                 type="submit"
-                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                disabled={!isAcademyConfigEditable}
+                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Save className="w-4 h-4" />
                 Commit Configurations

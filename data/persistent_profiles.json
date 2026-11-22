@@ -5,14 +5,17 @@
       "username": "aadithyan",
       "email": "aadithyan.menon@swanayamedia.com",
       "name": "AADITHYAN M MENON",
+      "designation": "Managing Director",
       "role": "MD",
       "avatarUrl": "https://api.dicebear.com/7.x/adventurer/svg?seed=AdithyanMenon",
       "status": "ACTIVE",
       "createdAt": "2026-01-01",
       "isVerified": true,
+      "email_verified": true,
+      "adminAcceptanceStatus": "ACCEPTED",
       "phone": "+91 94460 55555",
       "bio": "Managing Director & Academic Visionary at Swanaya Media Academy",
-      "updatedAt": "2026-11-17T15:19:11.980Z"
+      "updatedAt": "2026-11-21T06:45:00.000Z"
     },
     {
       "id": "usr-principal",
@@ -23,17 +26,6 @@
       "avatarUrl": "https://api.dicebear.com/7.x/avataaars/svg?seed=Principal",
       "status": "ACTIVE",
       "createdAt": "2026-01-01",
-      "isVerified": true
-    },
-    {
-      "id": "usr-navven",
-      "username": "navven",
-      "email": "navven.admin@swanayamedia.com",
-      "name": "NAVVEN (Administrator)",
-      "role": "ADMIN",
-      "avatarUrl": "https://api.dicebear.com/7.x/avataaars/svg?seed=Naveen",
-      "status": "ACTIVE",
-      "createdAt": "2026-01-02",
       "isVerified": true
     },
     {
@@ -57,9 +49,39 @@
       "status": "ACTIVE",
       "createdAt": "2026-01-08",
       "isVerified": true
+    },
+    {
+      "id": "usr-1795188443250-684ce0",
+      "username": "badey",
+      "email": "aadithyanmmenon432@gmail.com",
+      "name": "13484",
+      "role": "INSTRUCTOR",
+      "avatarUrl": "https://api.dicebear.com/7.x/avataaars/svg?seed=13484",
+      "status": "PENDING_VERIFICATION",
+      "email_verified": false,
+      "isVerified": false,
+      "tutorApprovalStatus": "PENDING_APPROVAL",
+      "createdAt": "2026-11-20",
+      "updatedAt": "2026-11-20T15:27:23.250Z"
     }
   ],
   "students": [],
-  "instructors": [],
-  "updatedAt": "2026-11-17T15:19:11.980Z"
+  "instructors": [
+    {
+      "id": "inst-1795188443300",
+      "userId": "usr-1795188443250-684ce0",
+      "name": "13484",
+      "email": "aadithyanmmenon432@gmail.com",
+      "qualification": "Faculty Applicant",
+      "specialization": "Digital Media & Engineering",
+      "experience": "Pending Verification",
+      "bio": "Registered Tutor awaiting email verification & admin approval.",
+      "avatarUrl": "https://api.dicebear.com/7.x/avataaars/svg?seed=13484",
+      "status": "INACTIVE",
+      "assignedSubjects": []
+    }
+  ],
+  "courseRegistrations": [],
+  "applications": [],
+  "updatedAt": "2026-11-21T06:45:00.000Z"
 }

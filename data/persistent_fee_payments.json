@@ -1,0 +1,59 @@
+{
+  "transactions": [],
+  "auditLogs": [
+    {
+      "id": "pay-log-1795018756560-961",
+      "timestamp": "2026-11-18T16:19:16.560Z",
+      "action": "PAYMENT_VERIFIED_APPROVED",
+      "actorEmail": "finance@swanaya.edu",
+      "actorName": "Finance Admin",
+      "entity": "Verified INV-SMA-TEST-1795018755535 · UTR 432198765432 · Receipt REC-SMA-20261118-8361",
+      "details": {
+        "transactionId": "tx-test-1795018755535",
+        "amount": 5000,
+        "receiptNumber": "REC-SMA-20261118-8361",
+        "utrNumber": "432198765432"
+      }
+    },
+    {
+      "id": "pay-log-1795018756282-671",
+      "timestamp": "2026-11-18T16:19:16.282Z",
+      "action": "PAYMENT_REQUEST_CREATED",
+      "actorEmail": "stud-test-1",
+      "actorName": "Test Scholar",
+      "entity": "Invoice INV-SMA-TEST-1795018755535-2 · ₹5,000",
+      "details": {
+        "invoiceNumber": "INV-SMA-TEST-1795018755535-2",
+        "amount": 5000,
+        "upiIdPaidTo": "swanayamedia@okaxis"
+      }
+    },
+    {
+      "id": "pay-log-1795018756205-229",
+      "timestamp": "2026-11-18T16:19:16.205Z",
+      "action": "UPI_UTR_SUBMITTED",
+      "actorEmail": "test@swanaya.edu",
+      "actorName": "Test Scholar",
+      "entity": "UTR 432198765432 submitted for INV-SMA-TEST-1795018755535 (₹5000)",
+      "details": {
+        "transactionId": "tx-test-1795018755535",
+        "invoiceNumber": "INV-SMA-TEST-1795018755535",
+        "utrNumber": "432198765432"
+      }
+    },
+    {
+      "id": "pay-log-1795018755560-271",
+      "timestamp": "2026-11-18T16:19:15.560Z",
+      "action": "PAYMENT_REQUEST_CREATED",
+      "actorEmail": "test@swanaya.edu",
+      "actorName": "Test Scholar",
+      "entity": "Invoice INV-SMA-TEST-1795018755535 · ₹5,000",
+      "details": {
+        "invoiceNumber": "INV-SMA-TEST-1795018755535",
+        "amount": 5000,
+        "upiIdPaidTo": "swanayamedia@okaxis"
+      }
+    }
+  ],
+  "updatedAt": "2026-11-18T16:19:16.560Z"
+}

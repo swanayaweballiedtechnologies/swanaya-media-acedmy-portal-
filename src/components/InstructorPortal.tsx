@@ -3,28 +3,47 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import { 
-  ClipboardList, CheckSquare, PlusCircle, CheckCircle, FileText, 
-  User, Award, MessageSquare, Plus, Clock, ExternalLink, FileUp, UploadCloud, Download, QrCode, ShieldAlert, X 
+  ClipboardList, CheckSquare, PlusCircle, CheckCircle, CheckCircle2, FileText, 
+  User, Award, MessageSquare, Plus, Clock, ExternalLink, FileUp, UploadCloud, Download, QrCode, ShieldAlert, X, RefreshCw, Copy, Users, Video, MessageCircle, Calendar, Check, GraduationCap
 } from 'lucide-react';
 import { 
   SwanayaDatabase, Instructor, Student, Subject, ClassSchedule, 
-  AttendanceRecord, Assignment, Submission, Project, Course, Lesson, Batch
+  AttendanceRecord, Assignment, Submission, Project, Course, Lesson, Batch,
+  AttendanceQrSession, AttendanceCheckIn, LiveClassSession
 } from '../db/mockDb';
 import ExaminationEngineModule from './ExaminationEngineModule';
+import LiveClassMeetWhatsAppPanel from './LiveClassMeetWhatsAppPanel';
+import GoogleMeetStudioPanel from './GoogleMeetStudioPanel';
+import TutorAssignedCoursesPanel from './TutorAssignedCoursesPanel';
+import { academyService } from '../services/academyService';
+
+export type InstructorPortalTab =
+  | 'attendance'
+  | 'assigned-courses'
+  | 'live-class'
+  | 'google-meet'
+  | 'assignments'
+  | 'projects'
+  | 'uploads'
+  | 'question-papers'
+  | 'mcq-exams'
+  | 'exam-eval';
 
 interface InstructorPortalProps {
   instructorUser: Instructor;
   currentUser: any;
   onRefreshAllData: () => void;
   onOpenProfile?: (target: { type: 'STUDENT' | 'INSTRUCTOR' | 'USER'; id: string }) => void;
+  initialTab?: InstructorPortalTab;
 }
 
-export default function InstructorPortal({ instructorUser, currentUser, onRefreshAllData, onOpenProfile }: InstructorPortalProps) {
+export default function InstructorPortal({ instructorUser, currentUser, onRefreshAllData, onOpenProfile, initialTab }: InstructorPortalProps) {
   // Database local states
   const [students, setStudents] = useState<Student[]>(() => SwanayaDatabase.get<Student[]>("students"));
-  const [classes, setClasses] = useState<ClassSchedule[]>(() => SwanayaDatabase.get<ClassSchedule[]>("classes"));
+  const [classes, setClasses] = useState<LiveClassSession[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => SwanayaDatabase.get<AttendanceRecord[]>("attendance"));
   const [assignments, setAssignments] = useState<Assignment[]>(() => SwanayaDatabase.get<Assignment[]>("assignments"));
   const [submissions, setSubmissions] = useState<Submission[]>(() => SwanayaDatabase.get<Submission[]>("submissions"));
@@ -32,24 +51,35 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
   const [subjects] = useState<Subject[]>(() => SwanayaDatabase.get<Subject[]>("subjects"));
   const [lessons, setLessons] = useState<Lesson[]>(() => SwanayaDatabase.get<Lesson[]>("lessons"));
   const [batches] = useState<Batch[]>(() => SwanayaDatabase.get<Batch[]>("batches"));
+  const [courses, setCourses] = useState<Course[]>(() => SwanayaDatabase.get<Course[]>("courses"));
+  const [instructors] = useState<Instructor[]>(() => SwanayaDatabase.get<Instructor[]>("instructors") || []);
+  const [portalNotice, setPortalNotice] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+  const [copiedMeetId, setCopiedMeetId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'attendance' | 'assignments' | 'projects' | 'uploads' | 'question-papers' | 'mcq-exams' | 'exam-eval'>('attendance');
+  const [activeTab, setActiveTab] = useState<InstructorPortalTab>(initialTab || 'attendance');
 
-  // Attendance states (Hourly tracking added!)
-  const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  // Attendance states (Hourly tracking + Dynamic QR!)
+  const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || 'live-session-1');
+  const [selectedCourseId, setSelectedCourseId] = useState<string>('');
   const [activeHour, setActiveHour] = useState<number>(1);
   const [tempAttendance, setTempAttendance] = useState<Record<string, 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED'>>({});
   const [attendanceSaved, setAttendanceSaved] = useState(false);
 
-  // Self-Attendance QR Generator States (New Feature!)
+  // Dynamic Self-Attendance QR Generator States
   const [qrModalOpen, setQrModalOpen] = useState(false);
-  const [qrPayload, setQrPayload] = useState({
-    classId: '',
-    hour: 1,
-    className: '',
-    batchCode: '',
-    expiry: ''
-  });
+  const [qrTtlMinutes, setQrTtlMinutes] = useState<number>(5);
+  const [activeQrSession, setActiveQrSession] = useState<AttendanceQrSession | null>(null);
+  const [qrImageUrl, setQrImageUrl] = useState<string>('');
+  const [qrCheckIns, setQrCheckIns] = useState<AttendanceCheckIn[]>([]);
+  const [qrSecondsLeft, setQrSecondsLeft] = useState<number>(0);
+  const [qrGenerating, setQrGenerating] = useState<boolean>(false);
+  const [tokenCopied, setTokenCopied] = useState<boolean>(false);
 
   // New assignment form states
   const [isAsgModalOpen, setIsAsgModalOpen] = useState(false);
@@ -85,10 +115,37 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
   const [tempPdfName, setTempPdfName] = useState('CoreSyllabus_S1_Lecture_Draft.pdf');
   const [pdfUploadSuccess, setPdfUploadSuccess] = useState(false);
 
+  // Subscribe to Firestore courses and class sessions for live session selector
+  useEffect(() => {
+    const unsubCourses = academyService.subscribeCourses({
+      includeUnpublished: true,
+      onData: (fetched) => {
+        setCourses(fetched);
+        if (!selectedCourseId && fetched.length > 0) {
+          setSelectedCourseId(fetched[0].id);
+        }
+      },
+    });
+    const unsubClasses = academyService.subscribeClassSessions({
+      includeInactive: true,
+      onData: (fetchedClasses) => {
+        setClasses(fetchedClasses);
+        if (fetchedClasses.length > 0 && (!selectedClassId || selectedClassId === 'live-session-1')) {
+          setSelectedClassId(fetchedClasses[0].id);
+        }
+      },
+    });
+    return () => {
+      unsubCourses();
+      unsubClasses();
+    };
+  }, []);
+
   // Load current attendance map when selected class shifts OR hour shifts
   React.useEffect(() => {
-    if (selectedClassId) {
-      const records = attendance.filter(r => r.classId === selectedClassId && r.hour === activeHour);
+    const effectiveClassId = selectedClassId || (selectedCourseId ? `live-${selectedCourseId}` : 'live-session-1');
+    if (effectiveClassId) {
+      const records = attendance.filter(r => r.classId === effectiveClassId && r.hour === activeHour);
       const map: Record<string, 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED'> = {};
       records.forEach(r => {
         map[r.studentId] = r.status;
@@ -100,23 +157,122 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
       setTempAttendance(map);
       setAttendanceSaved(false);
     }
-  }, [selectedClassId, activeHour, attendance, students]);
+  }, [selectedClassId, selectedCourseId, activeHour, attendance, students]);
+
+  // Countdown & Check-in subscription when QR session is active
+  useEffect(() => {
+    if (!activeQrSession) {
+      setQrSecondsLeft(0);
+      setQrCheckIns([]);
+      return;
+    }
+
+    const updateTimer = () => {
+      const diff = Math.max(0, Math.floor((new Date(activeQrSession.expiresAt).getTime() - Date.now()) / 1000));
+      setQrSecondsLeft(diff);
+    };
+    updateTimer();
+    const timer = setInterval(updateTimer, 1000);
+
+    const unsubCheckins = academyService.subscribeAttendanceCheckIns(activeQrSession.id, (list) => {
+      setQrCheckIns(list);
+      if (list.length > 0) {
+        setAttendance(SwanayaDatabase.get<AttendanceRecord[]>('attendance'));
+        setStudents(SwanayaDatabase.get<Student[]>('students'));
+      }
+    });
+
+    return () => {
+      clearInterval(timer);
+      unsubCheckins();
+    };
+  }, [activeQrSession?.id]);
+
+  const handleGenerateDynamicQr = async (ttlOverride?: number) => {
+    setQrGenerating(true);
+    try {
+      const ttl = ttlOverride || qrTtlMinutes;
+      const classRecord = classes.find((c) => c.id === selectedClassId);
+      const targetCourse =
+        courses.find((c) => c.id === (classRecord?.courseId || selectedCourseId)) || courses[0];
+      const subjectName =
+        subjects.find((s) => s.id === classRecord?.subjectId)?.name ||
+        targetCourse?.name ||
+        'Live Class Session';
+      const todayStr = classRecord?.date || new Date().toISOString().split('T')[0];
+      const effectiveClassId =
+        classRecord?.id || (targetCourse ? `live-${targetCourse.id}-${todayStr}` : selectedClassId || `live-session-${todayStr}`);
+
+      const session = await academyService.createAttendanceQrSession({
+        classId: effectiveClassId,
+        courseId: targetCourse?.id || classRecord?.courseId || 'general',
+        courseName: targetCourse?.name || 'Swanaya Media Academy Session',
+        subjectName,
+        date: todayStr,
+        hour: activeHour,
+        instructorId: currentUser?.id || instructorUser.userId || instructorUser.id,
+        instructorName: instructorUser?.name || currentUser?.name || 'Instructor',
+        ttlMinutes: ttl,
+      });
+
+      const qrDataString = JSON.stringify({
+        type: 'SMA_ATTENDANCE',
+        sessionId: session.id,
+        token: session.token,
+        classId: session.classId,
+        courseId: session.courseId,
+        hour: session.hour,
+        date: session.date,
+      });
+
+      const dataUrl = await QRCode.toDataURL(qrDataString, {
+        width: 280,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff',
+        },
+      });
+
+      setActiveQrSession(session);
+      setQrImageUrl(dataUrl);
+      setQrModalOpen(true);
+      setTokenCopied(false);
+
+      SwanayaDatabase.log(
+        currentUser?.email || instructorUser.email,
+        currentUser?.name || instructorUser.name,
+        'ATTENDANCE_QR_GENERATED',
+        `Generated dynamic attendance QR (${session.token}) for ${subjectName} · Hour ${activeHour}`
+      );
+    } catch (err: any) {
+      setPortalNotice({
+        type: 'error',
+        text: err?.message || 'Unable to generate attendance QR code.',
+      });
+    } finally {
+      setQrGenerating(false);
+    }
+  };
 
   // Attendance Save Actions per Class ID and HOUR!
   const handleSaveAttendance = () => {
     const classRecord = classes.find(c => c.id === selectedClassId);
-    if (!classRecord) return;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const effectiveClassId = classRecord?.id || (selectedCourseId ? `live-${selectedCourseId}-${todayStr}` : selectedClassId || `live-session-${todayStr}`);
+    const effectiveDate = classRecord?.date || todayStr;
 
     // Filter out existing records for this class AND active hour
-    const cleanRecords = attendance.filter(r => !(r.classId === selectedClassId && r.hour === activeHour));
+    const cleanRecords = attendance.filter(r => !(r.classId === effectiveClassId && r.hour === activeHour));
     
     // Build new records with hour slot
     const newRecords: AttendanceRecord[] = Object.entries(tempAttendance).map(([studentId, status]) => ({
-      id: `att-${selectedClassId}-${studentId}-${activeHour}-${Date.now()}`,
-      classId: selectedClassId,
+      id: `att-${effectiveClassId}-${studentId}-${activeHour}-${Date.now()}`,
+      classId: effectiveClassId,
       studentId,
       status,
-      date: classRecord.date,
+      date: effectiveDate,
       hour: activeHour
     }));
 
@@ -266,93 +422,271 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
     onRefreshAllData();
   };
 
+  const isClassAssignedToInstructor = (cls: LiveClassSession) => {
+    const myEmail = (instructorUser?.email || currentUser?.email || '').toLowerCase();
+    const myName = (instructorUser?.name || currentUser?.name || '').toLowerCase();
+    return Boolean(
+      (cls.instructorId &&
+        (cls.instructorId === instructorUser?.id ||
+          cls.instructorId === instructorUser?.userId ||
+          cls.instructorId === currentUser?.id)) ||
+        (myEmail && cls.instructorName && cls.instructorName.toLowerCase() === myEmail) ||
+        (myName && cls.instructorName && cls.instructorName.toLowerCase() === myName)
+    );
+  };
+
+  const sortedClasses = [...classes].sort((a, b) => {
+    const aMine = isClassAssignedToInstructor(a) ? 1 : 0;
+    const bMine = isClassAssignedToInstructor(b) ? 1 : 0;
+    return bMine - aMine;
+  });
+
+  const assignedLiveClasses = sortedClasses.filter(
+    (c) => isClassAssignedToInstructor(c) && Boolean(c.googleMeetUrl) && c.isActive !== false
+  );
+
+  const selectedClass = classes.find((c) => c.id === selectedClassId) || sortedClasses[0];
+
+  const handleCopyMeetUrl = (id: string, url: string) => {
+    navigator.clipboard?.writeText(url);
+    setCopiedMeetId(id);
+    setTimeout(() => setCopiedMeetId(null), 2000);
+  };
+
   return (
     <div className="space-y-6">
+      {portalNotice && (
+        <div
+          className={`rounded-lg p-3.5 flex items-center justify-between gap-3 text-xs border ${
+            portalNotice.type === 'error'
+              ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+              : portalNotice.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+          }`}
+        >
+          <span>{portalNotice.text}</span>
+          <button
+            type="button"
+            onClick={() => setPortalNotice(null)}
+            className="p-1 rounded hover:bg-black/30 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       
       {/* Portals Subnav Header Bar */}
-      <div className="flex flex-wrap items-center gap-1 bg-slate-900/60 border border-slate-800 p-1 rounded-md max-w-fit">
+      <div className="flex flex-wrap items-center gap-1 bg-[var(--sma-active-surface)] border border-[var(--sma-active-border)] p-1 rounded-lg max-w-fit">
         <button 
           onClick={() => setActiveTab('attendance')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeTab === 'attendance' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'attendance' ? 'bg-[var(--sma-role-accent)] text-white shadow-sm' : 'text-[var(--sma-active-text-muted)] hover:text-[var(--sma-active-text)]'
           }`}
         >
           Hourly Attendance
         </button>
         <button 
-          onClick={() => setActiveTab('assignments')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeTab === 'assignments' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          onClick={() => setActiveTab('assigned-courses')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'assigned-courses' ? 'bg-[var(--sma-role-accent)] text-white shadow-sm' : 'text-[var(--sma-active-text-muted)] hover:text-[var(--sma-active-text)]'
           }`}
         >
-          Assignments & grading
+          <GraduationCap className="w-3.5 h-3.5" />
+          <span>Assigned Major &amp; Minor</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('live-class')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'live-class' ? 'bg-[var(--sma-role-accent)] text-white shadow-sm' : 'text-[var(--sma-active-text-muted)] hover:text-[var(--sma-active-text)]'
+          }`}
+        >
+          <Video className="w-3.5 h-3.5" />
+          <span>Meet &amp; WhatsApp Group</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('google-meet')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'google-meet' ? 'bg-[var(--sma-role-accent)] text-white shadow-sm' : 'text-[var(--sma-active-text-muted)] hover:text-[var(--sma-active-text)]'
+          }`}
+        >
+          <Calendar className="w-3.5 h-3.5" />
+          <span>Google Meet Studio</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('assignments')}
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'assignments' ? 'bg-[var(--sma-role-accent)] text-white shadow-sm' : 'text-[var(--sma-active-text-muted)] hover:text-[var(--sma-active-text)]'
+          }`}
+        >
+          Assignments &amp; grading
         </button>
         <button 
           onClick={() => setActiveTab('projects')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer ${
-            activeTab === 'projects' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'projects' ? 'bg-[var(--sma-role-accent)] text-white shadow-sm' : 'text-[var(--sma-active-text-muted)] hover:text-[var(--sma-active-text)]'
           }`}
         >
           Capstone Projects
         </button>
         <button 
           onClick={() => setActiveTab('uploads')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-            activeTab === 'uploads' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'uploads' ? 'bg-[var(--sma-role-accent)] text-white shadow-sm' : 'text-[var(--sma-active-text-muted)] hover:text-[var(--sma-active-text)]'
           }`}
         >
           Syllabus PDF Uploads
         </button>
         <button 
           onClick={() => setActiveTab('question-papers')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-            activeTab === 'question-papers' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'question-papers' ? 'bg-[var(--sma-role-accent)] text-white shadow-sm' : 'text-[var(--sma-active-text-muted)] hover:text-[var(--sma-active-text)]'
           }`}
         >
           Question Papers
         </button>
         <button 
           onClick={() => setActiveTab('mcq-exams')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-            activeTab === 'mcq-exams' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'mcq-exams' ? 'bg-[var(--sma-role-accent)] text-white shadow-sm' : 'text-[var(--sma-active-text-muted)] hover:text-[var(--sma-active-text)]'
           }`}
         >
           MCQ Examinations
         </button>
         <button 
           onClick={() => setActiveTab('exam-eval')}
-          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-            activeTab === 'exam-eval' ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/10' : 'text-slate-400 hover:text-white'
+          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded-md transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'exam-eval' ? 'bg-[var(--sma-role-accent)] text-white shadow-sm' : 'text-[var(--sma-active-text-muted)] hover:text-[var(--sma-active-text)]'
           }`}
         >
           Answerbook Evaluation
         </button>
       </div>
 
+      {/* ASSIGNED MAJOR & MINOR COURSES ALLOCATION */}
+      {activeTab === 'assigned-courses' && (
+        <TutorAssignedCoursesPanel
+          instructorUser={instructorUser}
+          currentUser={currentUser}
+          onRefreshAllData={onRefreshAllData}
+        />
+      )}
+
       {/* ATTENDANCE SECTION WITH HOURLY CONTROLS */}
       {activeTab === 'attendance' && (
         <div className="space-y-6">
-          <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Assigned Live Classes & Google Meet Rooms Banner */}
+          {assignedLiveClasses.length > 0 && (
+            <div className="bg-emerald-950/25 border border-emerald-500/30 rounded-lg p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Video className="w-4 h-4 text-emerald-400" />
+                  <h4 className="text-xs font-serif font-bold text-white uppercase tracking-wider">
+                    Assigned Live Classes &amp; Google Meet Rooms
+                  </h4>
+                  <span className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono font-bold rounded">
+                    {assignedLiveClasses.length} Session(s) Assigned to {instructorUser?.name || currentUser?.name}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('live-class')}
+                  className="text-[11px] font-mono text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                >
+                  Manage All Sessions →
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {assignedLiveClasses.slice(0, 3).map((cls) => (
+                  <div
+                    key={cls.id}
+                    className="bg-slate-950/90 border border-slate-800 rounded-lg p-3.5 space-y-2.5 flex flex-col justify-between"
+                  >
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-mono text-amber-400 uppercase font-semibold truncate">
+                        {cls.courseName || 'Academy Program'} {cls.batchName ? `· ${cls.batchName}` : ''}
+                      </p>
+                      <h5 className="text-xs font-bold text-white truncate">{cls.title}</h5>
+                      <p className="text-[10px] font-mono text-slate-400">
+                        {cls.date} · {cls.startTime} – {cls.endTime}
+                      </p>
+                      <p className="text-[10px] font-mono text-emerald-400 truncate">{cls.googleMeetUrl}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <a
+                        href={cls.googleMeetUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 py-1.5 px-2.5 bg-emerald-500 hover:bg-emerald-400 text-black text-[10px] font-bold uppercase tracking-wider rounded flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Video className="w-3.5 h-3.5" />
+                        <span>Join Google Meet (Teacher Host) ↗</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyMeetUrl(cls.id, cls.googleMeetUrl || '')}
+                        className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-[10px] font-mono rounded cursor-pointer flex items-center gap-1"
+                        title="Copy Google Meet Link"
+                      >
+                        {copiedMeetId === cls.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedMeetId === cls.id ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-lg flex flex-col xl:flex-row xl:items-center justify-between gap-4">
             <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-slate-200 font-serif">Hourly Attendance Register</h3>
-              <p className="text-[10px] text-slate-500">Track and mark student presence specifically for individual hourly sessions.</p>
+              <h3 className="text-sm font-semibold text-slate-200 font-serif">Hourly Class Attendance &amp; Dynamic QR Check-In</h3>
+              <p className="text-[10px] text-slate-500">Mark hourly attendance manually or generate a live scannable QR code so students can check in from the Student Portal.</p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-slate-400 font-mono">Scheduled Class:</label>
-                <select
-                  value={selectedClassId}
-                  onChange={(e) => setSelectedClassId(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
-                >
-                  {classes.map((cls) => (
-                    <option key={cls.id} value={cls.id}>
-                      {cls.date} · {subjects.find(s=>s.id===cls.subjectId)?.name || 'Class'}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {sortedClasses.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400 font-mono">Scheduled Class:</label>
+                  <select
+                    value={selectedClassId}
+                    onChange={(e) => setSelectedClassId(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400 max-w-xs"
+                  >
+                    {sortedClasses.map((cls) => {
+                      const mine = isClassAssignedToInstructor(cls);
+                      return (
+                        <option key={cls.id} value={cls.id}>
+                          {mine ? '★ [Assigned] ' : ''}
+                          {cls.date} · {cls.title || subjects.find((s) => s.id === cls.subjectId)?.name || 'Class'}
+                          {cls.googleMeetUrl ? ' (Meet Ready)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400 font-mono">Program:</label>
+                  <select
+                    value={selectedCourseId}
+                    onChange={(e) => setSelectedCourseId(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-400"
+                  >
+                    {courses.length === 0 ? (
+                      <option value="">General Academy Session</option>
+                    ) : (
+                      courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} · {c.name}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              )}
 
               {/* Hourly Selector */}
               <div className="flex items-center gap-2">
@@ -368,8 +702,91 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
                   <option value={4}>Hour 4 (Code Review)</option>
                 </select>
               </div>
+
+              {/* Quick Launch Meet & WhatsApp Manager */}
+              <button
+                type="button"
+                onClick={() => setActiveTab('live-class')}
+                className="px-3.5 py-2 bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 text-emerald-300 text-xs font-semibold uppercase rounded cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              >
+                <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Meet &amp; WhatsApp</span>
+              </button>
+
+              {/* Prominent Header Dynamic QR Trigger Button */}
+              <button
+                type="button"
+                disabled={qrGenerating}
+                onClick={() => void handleGenerateDynamicQr()}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1.5 shadow-md shadow-amber-500/15 disabled:opacity-60 whitespace-nowrap shrink-0"
+              >
+                <QrCode className="w-4 h-4" />
+                {qrGenerating ? 'Generating...' : 'Generate Attendance QR'}
+              </button>
             </div>
           </div>
+
+          {/* Selected Class Google Meet & Cohort Strip */}
+          {selectedClass && (
+            <div className="bg-slate-950/90 border border-slate-800 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <p className="text-[10px] font-mono uppercase text-slate-400">
+                  Selected Class Session {selectedClass.instructorName ? `· Host: ${selectedClass.instructorName}` : ''}
+                </p>
+                <p className="text-xs font-semibold text-white truncate">
+                  {selectedClass.title} · {selectedClass.date} ({selectedClass.startTime} – {selectedClass.endTime})
+                </p>
+                {selectedClass.googleMeetUrl && (
+                  <p className="text-[11px] font-mono text-emerald-400 truncate">{selectedClass.googleMeetUrl}</p>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {selectedClass.googleMeetUrl ? (
+                  <>
+                    <a
+                      href={selectedClass.googleMeetUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-black text-[11px] font-bold uppercase tracking-wider rounded flex items-center gap-1.5 transition-colors"
+                    >
+                      <Video className="w-3.5 h-3.5" />
+                      <span>Join Google Meet (Teacher Host) ↗</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyMeetUrl(selectedClass.id, selectedClass.googleMeetUrl || '')}
+                      className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-[11px] font-mono rounded cursor-pointer flex items-center gap-1"
+                    >
+                      {copiedMeetId === selectedClass.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedMeetId === selectedClass.id ? 'Copied Link' : 'Copy Link'}</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('live-class')}
+                    className="px-3.5 py-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[11px] font-bold uppercase rounded cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Video className="w-3.5 h-3.5" />
+                    <span>Attach Google Meet Link</span>
+                  </button>
+                )}
+
+                {selectedClass.whatsappGroupUrl && (
+                  <a
+                    href={selectedClass.whatsappGroupUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold uppercase rounded flex items-center gap-1.5"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>WhatsApp Group ↗</span>
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
             <div className="flex justify-between items-center border-b border-slate-850 pb-3">
@@ -427,33 +844,33 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
               ))}
             </div>
 
-            {/* Bottom Actions Bar (With QR self-attendance generator trigger!) */}
-            <div className="pt-4 border-t border-slate-850 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setQrModalOpen(true);
-                  const classRecord = classes.find(c => c.id === selectedClassId);
-                  const batchRecord = batches.find(b => b.id === classRecord?.batchId);
-                  setQrPayload({
-                    classId: selectedClassId,
-                    hour: activeHour,
-                    className: subjects.find(s=>s.id===classRecord?.subjectId)?.name || 'Class Lecture',
-                    batchCode: batchRecord?.code || 'BATCH-2026',
-                    expiry: new Date(Date.now() + 5 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })
-                  });
-                }}
-                className="px-4 py-2.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-amber-400 text-xs font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1.5"
-              >
-                <QrCode className="w-4 h-4 text-amber-500" />
-                Generate Self-Attendance QR
-              </button>
+            {/* Bottom Actions Bar (With Dynamic QR self-attendance generator trigger!) */}
+            <div className="pt-4 border-t border-slate-850 flex flex-wrap justify-between items-center gap-3">
+              <p className="text-[11px] text-slate-500 font-mono">
+                {students.length === 0
+                  ? 'No local student rows loaded — use Generate Dynamic Attendance QR for live self check-in.'
+                  : `${students.length} enrolled scholar(s) ready for Hour ${activeHour} roll call.`}
+              </p>
 
-              <button
-                onClick={handleSaveAttendance}
-                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-colors shadow-md shadow-amber-500/10"
-              >
-                Log Hour {activeHour} Attendance
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={qrGenerating}
+                  onClick={() => void handleGenerateDynamicQr()}
+                  className="px-4 py-2.5 bg-slate-950 hover:bg-slate-800 border border-amber-500/40 text-amber-400 text-xs font-bold uppercase rounded cursor-pointer transition-colors flex items-center gap-1.5"
+                >
+                  <QrCode className="w-4 h-4 text-amber-500" />
+                  {qrGenerating ? 'Creating QR Session...' : 'Generate Dynamic Attendance QR'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveAttendance}
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase rounded cursor-pointer transition-colors shadow-md shadow-amber-500/10"
+                >
+                  Log Hour {activeHour} Attendance
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -542,13 +959,13 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
                         )}
                       </div>
                       {sub.fileUrl && (
-                        <a 
-                          href="#" 
-                          onClick={(e) => { e.preventDefault(); alert(`Simulated PDF Download: ${sub.fileUrl}`); }}
-                          className="text-amber-500 hover:text-amber-400 flex items-center gap-0.5 text-[10px]"
+                        <button
+                          type="button"
+                          onClick={() => setPortalNotice({ type: 'info', text: `Submission reference stored: ${sub.fileUrl}` })}
+                          className="text-amber-500 hover:text-amber-400 flex items-center gap-0.5 text-[10px] cursor-pointer"
                         >
-                          Download <Download className="w-3 h-3" />
-                        </a>
+                          View File Info <Download className="w-3 h-3" />
+                        </button>
                       )}
                     </div>
 
@@ -723,14 +1140,14 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
                       </div>
                     </div>
 
-                    <a 
-                      href="#"
-                      onClick={(e) => { e.preventDefault(); alert(`Simulated PDF Download: ${f.name}`); }}
-                      className="p-1.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded text-slate-400 hover:text-amber-500 transition-colors"
-                      title="Download PDF"
+                    <button
+                      type="button"
+                      onClick={() => setPortalNotice({ type: 'info', text: `Document attached to syllabus lesson: ${f.name}` })}
+                      className="p-1.5 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded text-slate-400 hover:text-amber-500 transition-colors cursor-pointer"
+                      title="Document Info"
                     >
                       <Download className="w-4 h-4" />
-                    </a>
+                    </button>
                   </div>
                 );
               })}
@@ -756,82 +1173,166 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
         />
       )}
 
-      {/* SELF-ATTENDANCE QR CODE MODAL OVERLAY (New Feature!) */}
-      {qrModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-950 border border-slate-800 rounded-lg max-w-sm w-full p-8 space-y-6 text-center shadow-2xl relative">
-            <button 
+      {/* DYNAMIC SELF-ATTENDANCE QR CODE MODAL */}
+      {qrModalOpen && activeQrSession && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-950 border border-slate-800 rounded-xl max-w-lg w-full p-6 md:p-7 space-y-5 shadow-2xl relative my-auto">
+            <button
+              type="button"
               onClick={() => setQrModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 bg-slate-900 border border-slate-800 rounded text-slate-400 hover:text-white"
+              className="absolute top-4 right-4 p-1.5 bg-slate-900 border border-slate-800 rounded text-slate-400 hover:text-white cursor-pointer"
+              aria-label="Close QR Modal"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <div className="space-y-1.5">
-              <span className="text-[9px] font-mono font-bold tracking-wider text-amber-500 uppercase">MOBILE SELF-ATTENDANCE PASS</span>
+            <div className="space-y-1 text-center">
+              <span className="text-[10px] font-mono font-bold tracking-widest text-amber-500 uppercase">
+                LIVE DYNAMIC ATTENDANCE QR PASS
+              </span>
               <h3 className="text-lg font-serif font-bold text-white leading-tight">
-                {qrPayload.className}
+                {activeQrSession.subjectName || activeQrSession.courseName}
               </h3>
-              <p className="text-slate-400 text-xs">Batch: <span className="font-mono text-slate-200">{qrPayload.batchCode}</span> · Hour Slot: <span className="font-mono text-amber-400 font-bold">{qrPayload.hour}</span></p>
-            </div>
-
-            {/* High-Fidelity SVG QR Code containing custom brand logo */}
-            <div className="bg-white p-4 rounded-xl max-w-[220px] mx-auto border-2 border-amber-500/20 shadow-xl shadow-amber-500/5">
-              <svg className="w-full h-full text-black" viewBox="0 0 100 100">
-                <rect width="100" height="100" fill="white" />
-                
-                {/* Standard Finder Patterns */}
-                <rect x="5" y="5" width="25" height="25" fill="black" />
-                <rect x="10" y="10" width="15" height="15" fill="white" />
-                <rect x="13" y="13" width="9" height="9" fill="black" />
-                
-                <rect x="70" y="5" width="25" height="25" fill="black" />
-                <rect x="75" y="10" width="15" height="15" fill="white" />
-                <rect x="78" y="13" width="9" height="9" fill="black" />
-                
-                <rect x="5" y="70" width="25" height="25" fill="black" />
-                <rect x="10" y="75" width="15" height="15" fill="white" />
-                <rect x="13" y="78" width="9" height="9" fill="black" />
-
-                {/* Simulated Noise / Grid Data Block elements */}
-                <rect x="35" y="10" width="5" height="10" fill="black" />
-                <rect x="45" y="5" width="10" height="5" fill="black" />
-                <rect x="40" y="20" width="15" height="5" fill="black" />
-                <rect x="60" y="15" width="5" height="15" fill="black" />
-                
-                <rect x="10" y="35" width="15" height="5" fill="black" />
-                <rect x="20" y="45" width="5" height="10" fill="black" />
-                <rect x="5" y="55" width="10" height="5" fill="black" />
-                
-                <rect x="75" y="35" width="10" height="10" fill="black" />
-                <rect x="85" y="50" width="10" height="5" fill="black" />
-                <rect x="70" y="60" width="5" height="15" fill="black" />
-                
-                <rect x="35" y="75" width="15" height="5" fill="black" />
-                <rect x="55" y="70" width="5" height="10" fill="black" />
-                <rect x="45" y="85" width="15" height="10" fill="black" />
-
-                {/* Inner Branding Overlay box 'SW' */}
-                <rect x="34" y="34" width="32" height="32" fill="white" rx="3" />
-                <rect x="37" y="37" width="26" height="26" fill="black" rx="2" />
-                <text x="50" y="53" fill="#D4AF37" fontSize="10" fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">SMA</text>
-              </svg>
-            </div>
-
-            <div className="space-y-3 bg-slate-900/60 p-4 rounded border border-slate-850">
-              <p className="text-[11px] text-slate-400 flex items-center gap-1.5 justify-center">
-                <Clock className="w-3.5 h-3.5 text-amber-500" />
-                Expires at: <span className="font-mono text-white font-bold">{qrPayload.expiry}</span>
+              <p className="text-slate-400 text-xs">
+                Date: <span className="font-mono text-slate-200">{activeQrSession.date}</span> · Hour Slot:{' '}
+                <span className="font-mono text-amber-400 font-bold">{activeQrSession.hour}</span>
               </p>
-              <div className="flex items-center gap-2 text-[9px] text-slate-500 font-mono justify-center border-t border-slate-850 pt-2.5">
-                <ShieldAlert className="w-3 h-3 text-emerald-400" />
-                <span>DYNAMIC SECURITY TOKEN ACTIVE</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-center">
+              {/* Real Scannable QR Code Image */}
+              <div className="bg-white p-3.5 rounded-xl mx-auto border-2 border-amber-500/30 shadow-xl shadow-amber-500/10 text-center">
+                {qrImageUrl ? (
+                  <img
+                    src={qrImageUrl}
+                    alt={`Attendance QR ${activeQrSession.token}`}
+                    className="w-48 h-48 mx-auto object-contain"
+                  />
+                ) : (
+                  <div className="w-48 h-48 flex items-center justify-center text-slate-500 text-xs">
+                    Generating QR...
+                  </div>
+                )}
+                <p className="text-[10px] font-mono font-bold text-slate-800 mt-1 tracking-widest">
+                  {activeQrSession.token}
+                </p>
+              </div>
+
+              {/* Token Controls, Countdown & Expiry Window */}
+              <div className="space-y-3">
+                <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-mono">
+                    <span className="text-slate-400 flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-amber-500" />
+                      Time Left
+                    </span>
+                    <span className={`font-bold ${qrSecondsLeft > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {qrSecondsLeft > 0
+                        ? `${Math.floor(qrSecondsLeft / 60)}:${String(qrSecondsLeft % 60).padStart(2, '0')}`
+                        : 'EXPIRED'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
+                    <div>
+                      <span className="text-[9px] font-mono uppercase text-slate-500 block">Dynamic Code</span>
+                      <span className="text-sm font-mono font-bold text-amber-400 tracking-wider">
+                        {activeQrSession.token}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(activeQrSession.token);
+                        setTokenCopied(true);
+                        setTimeout(() => setTokenCopied(false), 2000);
+                      }}
+                      className="px-2.5 py-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-700 rounded text-[10px] font-mono text-slate-200 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy className="w-3 h-3" />
+                      {tokenCopied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono uppercase text-slate-500 block">Validity Window</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[2, 5, 10].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => {
+                          setQrTtlMinutes(mins);
+                          void handleGenerateDynamicQr(mins);
+                        }}
+                        className={`py-1.5 rounded text-[11px] font-mono font-bold border cursor-pointer transition-colors ${
+                          qrTtlMinutes === mins
+                            ? 'bg-amber-500 text-black border-amber-400'
+                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        {mins}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={qrGenerating}
+                  onClick={() => void handleGenerateDynamicQr()}
+                  className="w-full py-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-bold uppercase rounded cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${qrGenerating ? 'animate-spin' : ''}`} />
+                  Rotate New QR Token
+                </button>
               </div>
             </div>
 
-            <p className="text-[10px] text-slate-500 leading-normal font-sans italic">
-              Instruct students to log in on their mobile browser and tap "Scan Attendance QR Code" to register as present instantly.
-            </p>
+            {/* Live Checked-In Students */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-3.5 space-y-2">
+              <div className="flex items-center justify-between text-[11px] font-mono border-b border-slate-800 pb-2">
+                <span className="text-slate-300 font-bold flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-emerald-400" />
+                  Live Student Check-Ins
+                </span>
+                <span className="text-emerald-400 font-bold">{qrCheckIns.length} Present</span>
+              </div>
+              {qrCheckIns.length === 0 ? (
+                <p className="text-[11px] text-slate-500 italic text-center py-2">
+                  Waiting for students to scan this QR code or enter token {activeQrSession.token}...
+                </p>
+              ) : (
+                <div className="max-h-32 overflow-y-auto divide-y divide-slate-800/80">
+                  {qrCheckIns.map((chk) => (
+                    <div key={chk.id} className="py-1.5 flex items-center justify-between text-xs">
+                      <span className="text-slate-200 font-medium">{chk.studentName}</span>
+                      <span className="text-[10px] font-mono text-emerald-400">
+                        PRESENT · {new Date(chk.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <p className="text-[10px] text-slate-500 leading-snug">
+                Students open <strong className="text-slate-300">Scan Attendance QR Code</strong> in their Student Portal to scan or enter <span className="font-mono text-amber-400">{activeQrSession.token}</span>.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  await academyService.expireAttendanceQrSession(activeQrSession.id);
+                  setActiveQrSession(null);
+                  setQrModalOpen(false);
+                }}
+                className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[11px] font-bold uppercase rounded shrink-0 cursor-pointer"
+              >
+                End Session
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -942,6 +1443,30 @@ export default function InstructorPortal({ instructorUser, currentUser, onRefres
             </form>
           </div>
         </div>
+      )}
+
+      {/* LIVE CLASS GOOGLE MEET & WHATSAPP GROUP STUDIO */}
+      {activeTab === 'live-class' && (
+        <LiveClassMeetWhatsAppPanel
+          mode="MANAGE"
+          currentUser={currentUser}
+          courses={courses}
+          batches={batches}
+          subjects={subjects}
+          instructors={instructors}
+          instructorUserId={instructorUser?.id}
+          onRefreshAllData={onRefreshAllData}
+        />
+      )}
+
+      {/* OFFICIAL GOOGLE MEET CALENDAR STUDIO */}
+      {activeTab === 'google-meet' && (
+        <GoogleMeetStudioPanel
+          mode="MANAGE"
+          currentUser={currentUser}
+          courses={courses}
+          batches={batches}
+        />
       )}
 
     </div>

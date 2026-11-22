@@ -1,0 +1,511 @@
+{
+  "credentials": {
+    "aadithyan.menon@swanayamedia.com": {
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "username": "aadithyan",
+      "passwordSalt": "96ffa858c6ffff97da7022935d10548e",
+      "passwordHash": "17587975d290f5ae609c2f424e58d77e4a9515471d6e06ad02c24f944d8c7e4d594d7035dc9db12e570f1c137b35aae431de1ab60277d9d92a0fff3870358834",
+      "bootstrapHashes": [
+        {
+          "salt": "f0822e9adc588ccbd17db0b104532bd5",
+          "hash": "5342b47722680ff4aaa58eff4e2192dc1285d54d9b07959c3fe5240925faee8a5d558796b47bd04f44e71e8ecdf22ae282af385165aa2504c3aa056cfaecfb1c"
+        },
+        {
+          "salt": "acd1d23e5a5ccb6309f20dfa67b96ef1",
+          "hash": "ec5d977208488967595d172877f1e6c96a0f20272502f1040c80a260186e280bbfa4591f74cbb17dbff5a1ab52c6d9f8104293e073c75924a933a2ecfd087516"
+        },
+        {
+          "salt": "60e3b26ecf9d8ba38b124b1f00805675",
+          "hash": "906c7ad4649646e8171672c78460643cff37b6115ef4a3cec9eb05c57546ff6381e17cea2425ab61104225bc8ab365f4b361be37e9457f9134e4952178a4dcf8"
+        }
+      ],
+      "email_verified": true,
+      "emailVerifiedAt": "2026-11-20T15:26:51.994Z",
+      "updatedAt": "2026-11-20T15:26:51.994Z"
+    },
+    "aadithyanmmenon432@gmail.com": {
+      "userId": "usr-1795188443250-684ce0",
+      "email": "aadithyanmmenon432@gmail.com",
+      "username": "badey",
+      "passwordSalt": "8f241a8d4a26fc45a59d9f89c828bad9",
+      "passwordHash": "e237864df2c59dcf57a12e094688f9174f82966e0297e279064a715e3ed110c6b31c3abcb58225ad46a4fe4104a56af2ff215f4124efd94d4125319741c62e41",
+      "email_verified": true,
+      "updatedAt": "2026-11-21T14:08:43.587Z"
+    }
+  },
+  "tokens": [
+    {
+      "id": "tok_1795188443390_201d1855",
+      "userId": "usr-1795188443250-684ce0",
+      "email": "aadithyanmmenon432@gmail.com",
+      "purpose": "EMAIL_VERIFY",
+      "tokenHash": "7c859d861a4604f717609971afefe8c08c3b0e24b2dc339f1ac03c6301018d67",
+      "expiresAt": "2026-11-20T15:57:23.389Z",
+      "createdAt": "2026-11-20T15:27:23.389Z",
+      "consumedAt": null
+    },
+    {
+      "id": "tok_1795322511198_5cacdc93",
+      "userId": "usr-md",
+      "email": "aadithyan@swanayamedia.com",
+      "purpose": "PASSWORD_RESET",
+      "tokenHash": "9b71404626c2a2d2f3afdd066d8dfb1abf6cef1bd8a6a3cf90b3292a77a04517",
+      "expiresAt": "2026-11-22T05:11:51.198Z",
+      "createdAt": "2026-11-22T04:41:51.198Z",
+      "consumedAt": null
+    }
+  ],
+  "phoneOtps": [],
+  "confirmationMessages": [
+    {
+      "id": "CONF-123723-348E",
+      "sentAt": "2026-11-21T14:08:43.723Z",
+      "recipientName": "13484",
+      "recipientPhone": "+91 94460 55555",
+      "recipientEmail": "aadithyanmmenon432@gmail.com",
+      "academyPhone": "+91 94460 55555",
+      "channel": "WHATSAPP",
+      "type": "REGISTRATION_ACCEPTED",
+      "messageText": "Congratulations 13484! Your registration at Swanaya Media Academy has been ACCEPTED by AADITHYAN M MENON.",
+      "whatsappUrl": "https://wa.me/919446055555?text=Congratulations%2013484!%20Your%20registration%20at%20Swanaya%20Media%20Academy%20has%20been%20ACCEPTED%20by%20AADITHYAN%20M%20MENON."
+    }
+  ],
+  "verificationSettings": {
+    "academyVerificationPhone": "+91 94460 55555",
+    "defaultChannel": "WHATSAPP",
+    "updatedAt": "2026-11-21T06:45:00.000Z"
+  },
+  "auditLogs": [
+    {
+      "id": "aud_1795322517304_0753df",
+      "createdAt": "2026-11-22T04:41:57.304Z",
+      "event": "PASSWORD_RESET_REQUESTED",
+      "userId": "usr-md",
+      "email": "aadithyan@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "SUCCESS",
+      "message": "Password reset link generated and sent."
+    },
+    {
+      "id": "aud_1795322466198_ec7ae5",
+      "createdAt": "2026-11-22T04:41:06.198Z",
+      "event": "LOGIN_SUCCESS",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Authenticated via ADMIN portal."
+    },
+    {
+      "id": "aud_1795322433686_261ff8",
+      "createdAt": "2026-11-22T04:40:33.686Z",
+      "event": "LOGIN_FAILED_BAD_PASSWORD",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "DENIED",
+      "message": "Invalid password rejected."
+    },
+    {
+      "id": "aud_1795270148067_a2f5a3",
+      "createdAt": "2026-11-21T14:09:08.067Z",
+      "event": "LOGIN_SUCCESS",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "SUCCESS",
+      "message": "Authenticated via ADMIN portal."
+    },
+    {
+      "id": "aud_1795270147793_9c170d",
+      "createdAt": "2026-11-21T14:09:07.793Z",
+      "event": "LOGIN_SUCCESS",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "SUCCESS",
+      "message": "Authenticated via ADMIN portal."
+    },
+    {
+      "id": "aud_1795270146166_bcca7c",
+      "createdAt": "2026-11-21T14:09:06.166Z",
+      "event": "TUTOR_REJECTED",
+      "userId": "usr-1795188443250-684ce0",
+      "email": "aadithyanmmenon432@gmail.com",
+      "role": "INSTRUCTOR",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Admin AADITHYAN M MENON marked tutor as REJECTED."
+    },
+    {
+      "id": "aud_1795270123724_cc9d3b",
+      "createdAt": "2026-11-21T14:08:43.724Z",
+      "event": "ADMIN_REGISTRATION_ACCEPTED",
+      "email": "aadithyanmmenon432@gmail.com",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "AADITHYAN M MENON accepted USER registration (usr-1795188443250-684ce0)."
+    },
+    {
+      "id": "aud_1795270119157_4076d2",
+      "createdAt": "2026-11-21T14:08:39.157Z",
+      "event": "LOGIN_FAILED_NOT_FOUND",
+      "email": "aadithyan m menon",
+      "ip": "127.0.0.1",
+      "outcome": "DENIED",
+      "message": "Sign-in attempt for unrecognized identifier."
+    },
+    {
+      "id": "aud_1795270115726_630a76",
+      "createdAt": "2026-11-21T14:08:35.726Z",
+      "event": "GOOGLE_SESSION_ESTABLISHED",
+      "userId": "1fMOMy6O05SRbFJmoYSw7A1YDXb2",
+      "email": "swanayamediaenterprisesadmins@gmail.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Verified Firebase Google session synchronized."
+    },
+    {
+      "id": "aud_1795243937762_e641f1",
+      "createdAt": "2026-11-21T06:52:17.762Z",
+      "event": "LOGIN_FAILED_BAD_PASSWORD",
+      "userId": "usr-1795188443250-684ce0",
+      "email": "aadithyanmmenon432@gmail.com",
+      "role": "INSTRUCTOR",
+      "ip": "127.0.0.1",
+      "outcome": "DENIED",
+      "message": "Invalid password rejected."
+    },
+    {
+      "id": "aud_1795243937699_d55889",
+      "createdAt": "2026-11-21T06:52:17.699Z",
+      "event": "LOGIN_FAILED_BAD_PASSWORD",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "DENIED",
+      "message": "Invalid password rejected."
+    },
+    {
+      "id": "aud_1795243921983_4cc471",
+      "createdAt": "2026-11-21T06:52:01.983Z",
+      "event": "LOGIN_SUCCESS",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "SUCCESS",
+      "message": "Authenticated via STUDENT portal."
+    },
+    {
+      "id": "aud_1795243921907_b2b748",
+      "createdAt": "2026-11-21T06:52:01.907Z",
+      "event": "LOGIN_SUCCESS",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "SUCCESS",
+      "message": "Authenticated via ADMIN portal."
+    },
+    {
+      "id": "aud_1795243921844_3bac69",
+      "createdAt": "2026-11-21T06:52:01.844Z",
+      "event": "LOGIN_SUCCESS",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "SUCCESS",
+      "message": "Authenticated via ADMIN portal."
+    },
+    {
+      "id": "aud_1795243921756_b48fc5",
+      "createdAt": "2026-11-21T06:52:01.757Z",
+      "event": "LOGIN_SUCCESS",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "SUCCESS",
+      "message": "Authenticated via ADMIN portal."
+    },
+    {
+      "id": "aud_1795243681179_cc2370",
+      "createdAt": "2026-11-21T06:48:01.179Z",
+      "event": "GOOGLE_SESSION_ESTABLISHED",
+      "userId": "1fMOMy6O05SRbFJmoYSw7A1YDXb2",
+      "email": "swanayamediaenterprisesadmins@gmail.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Verified Firebase Google session synchronized."
+    },
+    {
+      "id": "aud_1795243619551_b39039",
+      "createdAt": "2026-11-21T06:46:59.551Z",
+      "event": "GOOGLE_SESSION_ESTABLISHED",
+      "userId": "1fMOMy6O05SRbFJmoYSw7A1YDXb2",
+      "email": "swanayamediaenterprisesadmins@gmail.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Verified Firebase Google session synchronized."
+    },
+    {
+      "id": "aud_1795243604657_e01162",
+      "createdAt": "2026-11-21T06:46:44.657Z",
+      "event": "LOGIN_FAILED_BAD_PASSWORD",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "DENIED",
+      "message": "Invalid password rejected."
+    },
+    {
+      "id": "aud_1795243257483_4fc31d",
+      "createdAt": "2026-11-21T06:40:57.484Z",
+      "event": "GOOGLE_SESSION_ESTABLISHED",
+      "userId": "1fMOMy6O05SRbFJmoYSw7A1YDXb2",
+      "email": "swanayamediaenterprisesadmins@gmail.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Verified Firebase Google session synchronized."
+    },
+    {
+      "id": "aud_1795243236854_23f1f5",
+      "createdAt": "2026-11-21T06:40:36.854Z",
+      "event": "REAUTH_FAILED_NOT_FOUND",
+      "email": "aadithyanmmenon@gmail.com",
+      "ip": "103.104.46.60",
+      "outcome": "DENIED",
+      "message": "Re-authentication failed for unrecognized username/email."
+    },
+    {
+      "id": "aud_1795243210720_aa04a2",
+      "createdAt": "2026-11-21T06:40:10.720Z",
+      "event": "GOOGLE_SESSION_ESTABLISHED",
+      "userId": "msAnE2evNbOfjmY6BvSpN9ZPoUI2",
+      "email": "aadithyanmmenon@gmail.com",
+      "role": "STUDENT",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Verified Firebase Google session synchronized."
+    },
+    {
+      "id": "aud_1795243110554_8ab4e4",
+      "createdAt": "2026-11-21T06:38:30.554Z",
+      "event": "REAUTH_FAILED_BAD_PASSWORD",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "DENIED",
+      "message": "Invalid password rejected during username/password re-authentication."
+    },
+    {
+      "id": "aud_1795241910886_a2586e",
+      "createdAt": "2026-11-21T06:18:30.886Z",
+      "event": "GOOGLE_SESSION_ESTABLISHED",
+      "userId": "1fMOMy6O05SRbFJmoYSw7A1YDXb2",
+      "email": "swanayamediaenterprisesadmins@gmail.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Verified Firebase Google session synchronized."
+    },
+    {
+      "id": "aud_1795190593354_3ce021",
+      "createdAt": "2026-11-20T16:03:13.355Z",
+      "event": "LOGIN_FAILED_BAD_PASSWORD",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "DENIED",
+      "message": "Invalid password rejected."
+    },
+    {
+      "id": "aud_1795189702566_996903",
+      "createdAt": "2026-11-20T15:48:22.567Z",
+      "event": "LOGIN_FAILED_BAD_PASSWORD",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "DENIED",
+      "message": "Invalid password rejected."
+    },
+    {
+      "id": "aud_1795188449679_7eb493",
+      "createdAt": "2026-11-20T15:27:29.679Z",
+      "event": "EMAIL_VERIFICATION_FAILED",
+      "ip": "127.0.0.1",
+      "outcome": "DENIED",
+      "message": "Verification link is invalid or unrecognized."
+    },
+    {
+      "id": "aud_1795188448230_9192e0",
+      "createdAt": "2026-11-20T15:27:28.230Z",
+      "event": "AUTH_REGISTER_PENDING_VERIFICATION",
+      "userId": "usr-1795188443250-684ce0",
+      "email": "aadithyanmmenon432@gmail.com",
+      "role": "INSTRUCTOR",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Account created (INSTRUCTOR); verification link emailed via ethereal."
+    },
+    {
+      "id": "aud_1795188445770_847262",
+      "createdAt": "2026-11-20T15:27:25.770Z",
+      "event": "LOGIN_FAILED_BAD_PASSWORD",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "DENIED",
+      "message": "Invalid password rejected."
+    },
+    {
+      "id": "aud_1795188445570_03516a",
+      "createdAt": "2026-11-20T15:27:25.570Z",
+      "event": "LOGIN_SUCCESS",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "SUCCESS",
+      "message": "Authenticated via ADMIN portal."
+    },
+    {
+      "id": "aud_1795188445415_1fd7fe",
+      "createdAt": "2026-11-20T15:27:25.415Z",
+      "event": "LOGIN_SUCCESS",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "SUCCESS",
+      "message": "Authenticated via ADMIN portal."
+    },
+    {
+      "id": "aud_1795188445291_ba9bc8",
+      "createdAt": "2026-11-20T15:27:25.291Z",
+      "event": "LOGIN_SUCCESS",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "127.0.0.1",
+      "outcome": "SUCCESS",
+      "message": "Authenticated via ADMIN portal."
+    },
+    {
+      "id": "aud_1795188385278_aec6c3",
+      "createdAt": "2026-11-20T15:26:25.278Z",
+      "event": "EMAIL_VERIFICATION_RESENT",
+      "userId": "usr-1795188281309-944034",
+      "email": "swanayamediaenterprisesadmins@gmail.com",
+      "role": "INSTRUCTOR",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Regenerated single-use verification token and resent verification email."
+    },
+    {
+      "id": "aud_1795188286351_af9b8a",
+      "createdAt": "2026-11-20T15:24:46.351Z",
+      "event": "AUTH_REGISTER_PENDING_VERIFICATION",
+      "userId": "usr-1795188281309-944034",
+      "email": "swanayamediaenterprisesadmins@gmail.com",
+      "role": "INSTRUCTOR",
+      "ip": "103.104.46.60",
+      "outcome": "SUCCESS",
+      "message": "Account created (INSTRUCTOR); verification link emailed via ethereal."
+    },
+    {
+      "id": "aud_1795188253223_b71947",
+      "createdAt": "2026-11-20T15:24:13.223Z",
+      "event": "LOGIN_PASSWORD_NOT_SET",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "DENIED",
+      "message": "Credential login attempted for Google/MD-seeded account with no local password set."
+    },
+    {
+      "id": "aud_1795188114113_1bb485",
+      "createdAt": "2026-11-20T15:21:54.113Z",
+      "event": "LOGIN_PASSWORD_NOT_SET",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "DENIED",
+      "message": "Credential login attempted for Google/MD-seeded account with no local password set."
+    },
+    {
+      "id": "aud_1795188102945_4282d6",
+      "createdAt": "2026-11-20T15:21:42.945Z",
+      "event": "LOGIN_PASSWORD_NOT_SET",
+      "userId": "usr-md",
+      "email": "aadithyan.menon@swanayamedia.com",
+      "role": "MD",
+      "ip": "103.104.46.60",
+      "outcome": "DENIED",
+      "message": "Credential login attempted for Google/MD-seeded account with no local password set."
+    }
+  ],
+  "outbox": [
+    {
+      "id": "mail_1795322517303_3b615a",
+      "sentAt": "2026-11-22T04:41:57.303Z",
+      "to": "aadithyan@swanayamedia.com",
+      "subject": "Reset Your Academy Account Password",
+      "purpose": "PASSWORD_RESET",
+      "provider": "ethereal",
+      "messageId": "<270da45e-b08f-0a8c-927d-1835ae09c936@swanayamedia.com>",
+      "previewUrl": "https://ethereal.email/message/awJykOiVxZpKZm0MawJylXM3WywC7paIAAAAAbDINAesNgeJL72WeRVlHME"
+    },
+    {
+      "id": "mail_1795188448230_b14c7b",
+      "sentAt": "2026-11-20T15:27:28.230Z",
+      "to": "aadithyanmmenon432@gmail.com",
+      "subject": "Verify Your Swanaya Media Academy Account",
+      "purpose": "EMAIL_VERIFY",
+      "provider": "ethereal",
+      "messageId": "<ae8fde7a-0d16-ab4d-bb17-5493bdbb5643@swanayamedia.com>",
+      "previewUrl": "https://ethereal.email/message/awBm3NZuEQxEh.S7awBm4LyhcdNueUwiAAAAAWS-T6HszSGAdIO45Tc1Dho"
+    },
+    {
+      "id": "mail_1795188385278_f98b67",
+      "sentAt": "2026-11-20T15:26:25.278Z",
+      "to": "swanayamediaenterprisesadmins@gmail.com",
+      "subject": "Verify Your Swanaya Media Academy Account",
+      "purpose": "EMAIL_RESEND",
+      "provider": "ethereal",
+      "messageId": "<83fe69cc-9324-90a7-b286-b213f5f499ee@swanayamedia.com>",
+      "previewUrl": "https://ethereal.email/message/awBmOtZuEQxEh-HUawBmobyhcdNueUwCAAAAAlEiBlHZ1PdxazcFdY5mUGM"
+    },
+    {
+      "id": "mail_1795188286350_f66675",
+      "sentAt": "2026-11-20T15:24:46.350Z",
+      "to": "swanayamediaenterprisesadmins@gmail.com",
+      "subject": "Verify Your Swanaya Media Academy Account",
+      "purpose": "EMAIL_VERIFY",
+      "provider": "ethereal",
+      "messageId": "<1fce7639-3e14-8261-a9f8-80bbb427ab8a@swanayamedia.com>",
+      "previewUrl": "https://ethereal.email/message/awBmOtZuEQxEh-HUawBmPryhcdNueUunAAAAAWPCPb0hJnEgI5dJVV0-ask"
+    }
+  ],
+  "updatedAt": "2026-11-22T04:41:57.304Z"
+}

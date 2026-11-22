@@ -507,10 +507,33 @@ export default function CourseVerificationPortal({
         SwanayaDatabase.set('applications', updatedApps);
       }
 
+      try {
+        await academyService.acceptRegistrationDecision({
+          targetType: item.origin === 'PORTAL_REGISTRATION' ? 'COURSE_REGISTRATION' : 'APPLICATION',
+          targetId: item.id,
+          decision: decision === 'VERIFIED' ? 'ACCEPTED' : 'REJECTED',
+          adminName: currentUser.name,
+          adminEmail: currentUser.email,
+          remarks: remark || undefined,
+          registrationSnapshot:
+            item.origin === 'PORTAL_REGISTRATION'
+              ? {
+                  ...item.rawRegistration,
+                  studentName: item.applicantName,
+                  studentEmail: item.applicantEmail,
+                  studentPhone: item.applicantPhone,
+                  courseTitle: item.courseTitle,
+                }
+              : item.rawApplication,
+        });
+      } catch {
+        // non-fatal backend acceptance log sync
+      }
+
       pushNotification(
         item.userId || item.studentId,
-        decision === 'VERIFIED' ? 'Course Selection MD Verified' : 'Course Selection Declined by MD',
-        `${item.applicantName}'s course selection (${item.courseTitle}) received MD status: ${decision}.`,
+        decision === 'VERIFIED' ? 'Course Registration Accepted' : 'Course Selection Declined by MD',
+        `${item.applicantName}'s course selection (${item.courseTitle}) received acceptance status: ${decision}.`,
         decision === 'VERIFIED' ? 'SUCCESS' : 'WARNING'
       );
 
@@ -522,7 +545,7 @@ export default function CourseVerificationPortal({
       );
       setNotice({
         type: 'success',
-        text: `MD final decision (${decision}) recorded for ${item.applicantName}.`,
+        text: `Course registration ${decision === 'VERIFIED' ? 'accepted' : 'declined'} for ${item.applicantName}.`,
       });
       onRefreshAllData();
     } catch (err: any) {
