@@ -236,35 +236,34 @@ export function verifyCredentialPassword(password: string, cred: AuthCredentialR
 export function ensureMdBootstrapCredential(): void {
   const mdEmail = 'aadithyan.menon@swanayamedia.com';
   const store = readAuthStore();
-  const primaryPass = (process.env.SMA_MD_BOOTSTRAP_PASSWORD || '').trim() || 'swanaya manging director 2026';
-  const primary = hashPassword(primaryPass);
-  const variants = Array.from(
-    new Set(['swanayamangingdirector2026', 'swanaya manging director 2026', 'managingdirector2026', 'managing director2026', 'manging director2026', 'mangingdirector2026', 'managing director2026'].filter((v) => v !== primaryPass))
-  );
-  const nowIso = new Date().toISOString();
+  const existing = store.credentials[mdEmail];
 
-  if (!store.credentials[mdEmail] || store.credentials[mdEmail]?.userId !== 'usr-md') {
-    store.credentials[mdEmail] = {
-      userId: 'usr-md',
-      email: mdEmail,
-      username: 'aadithyan',
-      passwordSalt: primary.salt,
-      passwordHash: primary.hash,
-      bootstrapHashes: variants.map((v) => hashPassword(v)),
-      email_verified: true,
-      emailVerifiedAt: nowIso,
-      updatedAt: nowIso,
-    };
-    writeAuthStore(store);
-  } else {
-    const existing = store.credentials[mdEmail];
-    existing.username = 'aadithyan';
-    existing.passwordSalt = primary.salt;
-    existing.passwordHash = primary.hash;
-    existing.bootstrapHashes = variants.map((v) => hashPassword(v));
-    existing.email_verified = true;
-    writeAuthStore(store);
+  // Never rotate or replace an existing MD credential during ordinary server startup.
+  // Bootstrap is allowed only for a genuinely missing record and an explicitly
+  // configured secret supplied by the backend environment.
+  if (existing) {
+    return;
   }
+
+  const bootstrapPassword = String(process.env.SMA_MD_BOOTSTRAP_PASSWORD || '').trim();
+  if (!bootstrapPassword) {
+    console.warn('[AuthStore] MD bootstrap skipped: no existing credential and no SMA_MD_BOOTSTRAP_PASSWORD configured.');
+    return;
+  }
+
+  const primary = hashPassword(bootstrapPassword);
+  const nowIso = new Date().toISOString();
+  store.credentials[mdEmail] = {
+    userId: 'usr-md',
+    email: mdEmail,
+    username: 'aadithyan',
+    passwordSalt: primary.salt,
+    passwordHash: primary.hash,
+    email_verified: true,
+    emailVerifiedAt: nowIso,
+    updatedAt: nowIso,
+  };
+  writeAuthStore(store);
 }
 
 export function hashToken(rawToken: string): string {
