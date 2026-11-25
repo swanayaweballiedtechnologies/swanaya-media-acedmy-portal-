@@ -10,6 +10,7 @@ import { getFirestore, FieldValue, Timestamp, QuerySnapshot } from 'firebase-adm
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import crypto from 'crypto';
+import { checkPostgresConnection, isPostgresConfigured } from './server/db/postgres.ts';
 import {
   createCaptchaChallenge,
   verifyCaptchaChallenge,
@@ -95,9 +96,24 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 app.use(express.json({ limit: '10mb' }));
+ 
+// Read-only Railway PostgreSQL connectivity probe. Never returns connection details.
+app.get('/api/health/postgres', async (_req, res) => {
+  if (!isPostgresConfigured()) {
+    return res.status(503).json({ ok: false, configured: false, service: 'postgres' });
+  }
+  try {
+    await checkPostgresConnection();
+    return res.json({ ok: true, configured: true, service: 'postgres' });
+  } catch (error: any) {
+    console.error('[PostgreSQL] Health check failed:', error?.message || error);
+    return res.status(503).json({ ok: false, configured: true, service: 'postgres' });
+  }
+});
+
 
 // Express route for AI Chatbot
 app.post('/api/ai/chat', async (req, res) => {
