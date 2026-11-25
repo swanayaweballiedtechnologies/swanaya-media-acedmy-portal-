@@ -1228,10 +1228,8 @@ export class SwanayaDatabase {
     this.isInitializing = true;
 
     try {
-      if (!localStorage.getItem("sma_database_purged_all_demo_v5")) {
-        localStorage.setItem("sma_database_purged_all_demo_v5", "true");
-        this.clearAllPreloadedData();
-      }
+      // Preservation guard: initialization must never clear existing browser data.
+      // The former first-run demo purge overwrote sma_* records before migration.
 
       const keys = {
         settings: INITIAL_SETTINGS,
@@ -1241,7 +1239,7 @@ export class SwanayaDatabase {
         subjects: [],
         lessons: [],
         batches: [],
-        users: INITIAL_USERS,
+        users: [],
         instructors: [],
         students: [],
         classes: [],
@@ -1286,40 +1284,9 @@ export class SwanayaDatabase {
         }
       });
 
-      if (!localStorage.getItem("sma_principal_role_seeded_v1")) {
-        localStorage.setItem("sma_principal_role_seeded_v1", "true");
-        const existingUsersRaw = localStorage.getItem("sma_users");
-        const existingUsers: User[] = existingUsersRaw ? JSON.parse(existingUsersRaw) : [];
-        if (Array.isArray(existingUsers) && !existingUsers.some((u) => u.role === "PRINCIPAL")) {
-          const principalSeed = INITIAL_USERS.find((u) => u.role === "PRINCIPAL");
-          if (principalSeed) {
-            localStorage.setItem("sma_users", JSON.stringify([existingUsers[0], principalSeed, ...existingUsers.slice(1)].filter(Boolean)));
-          }
-        }
-      }
+      // Do not auto-insert demo/principal/tutor accounts into a live data store.
+      // Real accounts are provisioned through the authenticated registration/admin workflows.
 
-      if (!localStorage.getItem("sma_tutor_faculty_seeded_v2")) {
-        localStorage.setItem("sma_tutor_faculty_seeded_v2", "true");
-        // Ensure users include tutor and student demo accounts
-        const existingUsersRaw = localStorage.getItem("sma_users");
-        const existingUsers: User[] = existingUsersRaw ? JSON.parse(existingUsersRaw) : [];
-        const missingUsers = INITIAL_USERS.filter((u) => !existingUsers.some((eu) => eu.id === u.id || eu.email === u.email));
-        if (missingUsers.length > 0) {
-          localStorage.setItem("sma_users", JSON.stringify([...existingUsers, ...missingUsers]));
-        }
-
-        // Ensure instructors list has initial instructors
-        const existingInstRaw = localStorage.getItem("sma_instructors");
-        const existingInst: Instructor[] = existingInstRaw ? JSON.parse(existingInstRaw) : [];
-        if (!Array.isArray(existingInst) || existingInst.length === 0) {
-          localStorage.setItem("sma_instructors", JSON.stringify(INITIAL_INSTRUCTORS));
-        } else {
-          const missingInst = INITIAL_INSTRUCTORS.filter((i) => !existingInst.some((ei) => ei.id === i.id || ei.email === i.email));
-          if (missingInst.length > 0) {
-            localStorage.setItem("sma_instructors", JSON.stringify([...existingInst, ...missingInst]));
-          }
-        }
-      }
     } finally {
       this.isInitializing = false;
     }
